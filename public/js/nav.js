@@ -23,6 +23,7 @@
       <div class="nav-links">
         <a href="/availability" class="${activePage === 'availability' ? 'active' : ''}">My Availability</a>
         <a href="/search" class="${activePage === 'search' ? 'active' : ''}">Find Overlap</a>
+        <a href="/profile/edit" class="${activePage === 'profile' ? 'active' : ''}">Profile</a>
         <button class="btn-logout" id="logoutBtn">Logout</button>
       </div>
     `;
@@ -34,6 +35,5 @@
     });
   }
 
-  // Expose globally
   window.RiftNav = { checkAuth, createNav };
 })();

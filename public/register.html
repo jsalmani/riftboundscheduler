@@ -30,6 +30,14 @@
           </select>
         </div>
         <div class="form-group">
+          <label for="discordHandle">Discord Handle <span style="font-weight:400;text-transform:none">(optional)</span></label>
+          <input type="text" id="discordHandle" name="discordHandle" placeholder="@username or username#1234" maxlength="50">
+        </div>
+        <div class="form-group">
+          <label for="tcgArenaCode">TCG Arena Friend Code <span style="font-weight:400;text-transform:none">(optional)</span></label>
+          <input type="text" id="tcgArenaCode" name="tcgArenaCode" placeholder="Friend code" maxlength="50">
+        </div>
+        <div class="form-group">
           <label for="pin">PIN</label>
           <input type="password" id="pin" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" required class="pin-input" placeholder="------">
           <div class="pin-hint">Choose a 4-6 digit numeric PIN</div>
@@ -119,11 +127,14 @@
         return showError('PIN must be 4-6 digits');
       }
 
+      const discordHandle = document.getElementById('discordHandle').value.trim();
+      const tcgArenaCode = document.getElementById('tcgArenaCode').value.trim();
+
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, displayName, password: pin, timezone })
+          body: JSON.stringify({ username, displayName, password: pin, timezone, discordHandle, tcgArenaCode })
         });
         const data = await res.json();
         if (!res.ok) {

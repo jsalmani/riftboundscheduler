@@ -460,5 +460,12 @@
     }
   }
 
+  // Auto-load from URL hash (e.g. /search#player2)
+  const hashUser = window.location.hash.slice(1);
+  if (hashUser) {
+    searchInput.value = decodeURIComponent(hashUser);
+    loadOverlap(decodeURIComponent(hashUser));
+  }
+
   document.getElementById('app').style.display = 'block';
 })();

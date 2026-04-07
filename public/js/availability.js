@@ -218,6 +218,16 @@
     }
   }
 
+  // Copy profile link button
+  document.getElementById('copyProfileLink').addEventListener('click', () => {
+    const url = `${window.location.origin}/player/${auth.user.username}`;
+    navigator.clipboard.writeText(url).then(() => {
+      const el = document.getElementById('profileLinkConfirm');
+      el.classList.add('visible');
+      setTimeout(() => el.classList.remove('visible'), 1500);
+    });
+  });
+
   await loadAvailability();
   document.getElementById('app').style.display = 'block';
 })();

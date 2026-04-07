@@ -51,12 +51,10 @@ async function initDatabase() {
       ON availability(user_id, week_year)
   `);
 
-  // Add timezone column if upgrading from old schema
-  try {
-    db.run("ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'America/New_York'");
-  } catch {
-    // Column already exists
-  }
+  // Add columns if upgrading from old schema
+  try { db.run("ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'America/New_York'"); } catch {}
+  try { db.run("ALTER TABLE users ADD COLUMN discord_handle TEXT DEFAULT ''"); } catch {}
+  try { db.run("ALTER TABLE users ADD COLUMN tcg_arena_code TEXT DEFAULT ''"); } catch {}
 
   saveToFile();
   return db;
@@ -202,10 +200,10 @@ function utcToLocal(weekYear, day, timeSlot, timezone) {
 // --- Query functions (replacing prepared statements) ---
 
 const createUser = {
-  run: (username, displayName, passwordHash, timezone) => {
+  run: (username, displayName, passwordHash, timezone, discordHandle, tcgArenaCode) => {
     const result = runStmt(
-      'INSERT INTO users (username, display_name, password_hash, timezone) VALUES (?, ?, ?, ?)',
-      [username, displayName, passwordHash, timezone]
+      'INSERT INTO users (username, display_name, password_hash, timezone, discord_handle, tcg_arena_code) VALUES (?, ?, ?, ?, ?, ?)',
+      [username, displayName, passwordHash, timezone, discordHandle || '', tcgArenaCode || '']
     );
     saveToFile();
     return result;
@@ -217,7 +215,7 @@ const getUserByUsername = {
 };
 
 const getUserById = {
-  get: (id) => queryGet('SELECT id, username, display_name, timezone, created_at FROM users WHERE id = ?', [id])
+  get: (id) => queryGet('SELECT id, username, display_name, timezone, discord_handle, tcg_arena_code, created_at FROM users WHERE id = ?', [id])
 };
 
 const searchUsers = {
@@ -225,8 +223,16 @@ const searchUsers = {
 };
 
 const getAllUsers = {
-  all: () => queryAll('SELECT id, username, display_name, timezone, created_at FROM users ORDER BY username')
+  all: () => queryAll('SELECT id, username, display_name, timezone, discord_handle, tcg_arena_code, created_at FROM users ORDER BY username')
 };
+
+function updateProfile(userId, displayName, discordHandle, tcgArenaCode) {
+  runStmt(
+    'UPDATE users SET display_name = ?, discord_handle = ?, tcg_arena_code = ? WHERE id = ?',
+    [displayName, discordHandle || '', tcgArenaCode || '', userId]
+  );
+  saveToFile();
+}
 
 const upsertAvailability = {
   run: (userId, weekYear, dayOfWeek, timeSlot, isAvailable) => {
@@ -337,5 +343,6 @@ module.exports = {
   getAvailabilityLocal,
   getUtcSlotsForUser,
   getUserAvailabilityCount,
-  bulkSaveAvailability
+  bulkSaveAvailability,
+  updateProfile
 };

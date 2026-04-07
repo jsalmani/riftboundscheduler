@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Player Profile - Riftbound Scheduler</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="main-content" id="app" style="display:none">
+    <div class="player-profile">
+      <div class="player-header">
+        <div class="player-avatar" id="playerAvatar"></div>
+        <div>
+          <h1 id="playerDisplayName"></h1>
+          <p class="player-username">@<span id="playerUsername"></span></p>
+          <p class="player-tz" id="playerTz"></p>
+        </div>
+      </div>
+
+      <div class="player-socials" id="playerSocials"></div>
+
+      <div class="player-actions">
+        <a class="btn btn-primary" id="overlapBtn" style="width:auto;padding:12px 24px">View Availability &amp; Find Overlap</a>
+        <button class="btn-copy" id="copyProfileLink">Copy profile link</button>
+        <span class="copy-confirm" id="profileLinkConfirm">Copied!</span>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/nav.js"></script>
+  <script>
+    (async function() {
+      const auth = await RiftNav.checkAuth();
+      if (!auth) return;
+      RiftNav.createNav('', auth.user.timezone);
+
+      // Extract username from URL path: /player/:username
+      const pathParts = window.location.pathname.split('/');
+      const username = pathParts[pathParts.length - 1];
+
+      if (!username) {
+        document.getElementById('app').innerHTML = '<p style="text-align:center;color:var(--text-muted);margin-top:60px">Player not found</p>';
+        document.getElementById('app').style.display = 'block';
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/profile/${encodeURIComponent(username)}`);
+        if (!res.ok) {
+          document.getElementById('app').innerHTML = '<p style="text-align:center;color:var(--text-muted);margin-top:60px">Player not found</p>';
+          document.getElementById('app').style.display = 'block';
+          return;
+        }
+        const data = await res.json();
+        const user = data.user;
+
+        document.title = `${user.displayName} - Riftbound Scheduler`;
+
+        // Avatar: first letter
+        document.getElementById('playerAvatar').textContent = user.displayName.charAt(0).toUpperCase();
+        document.getElementById('playerDisplayName').textContent = user.displayName;
+        document.getElementById('playerUsername').textContent = user.username;
+        document.getElementById('playerTz').textContent = user.timezone;
+
+        // Social links
+        const socialsEl = document.getElementById('playerSocials');
+        let socialsHTML = '';
+
+        if (user.discordHandle) {
+          const handle = user.discordHandle.replace(/^@/, '');
+          socialsHTML += `
+            <a class="social-btn discord-btn" href="https://discord.com" target="_blank" rel="noopener">
+              <span class="social-icon">Discord</span>
+              <span>${user.discordHandle}</span>
+            </a>`;
+        }
+
+        if (user.tcgArenaCode) {
+          socialsHTML += `
+            <div class="social-btn tcg-btn">
+              <span class="social-icon">TCG Arena</span>
+              <span id="tcgCode">${user.tcgArenaCode}</span>
+              <button class="copy-code-btn" id="copyTcgCode">Copy code</button>
+            </div>`;
+        }
+
+        if (!socialsHTML) {
+          socialsHTML = '<p style="color:var(--text-muted);font-size:0.9rem">No social links set</p>';
+        }
+        socialsEl.innerHTML = socialsHTML;
+
+        // Wire up TCG copy button
+        const copyTcgBtn = document.getElementById('copyTcgCode');
+        if (copyTcgBtn) {
+          copyTcgBtn.addEventListener('click', () => {
+            navigator.clipboard.writeText(user.tcgArenaCode).then(() => {
+              copyTcgBtn.textContent = 'Copied!';
+              setTimeout(() => { copyTcgBtn.textContent = 'Copy code'; }, 1500);
+            });
+          });
+        }
+
+        // Overlap button — go to search page pre-loaded with this user
+        const isOwnProfile = user.username === auth.user.username;
+        const overlapBtn = document.getElementById('overlapBtn');
+        if (isOwnProfile) {
+          overlapBtn.textContent = 'My Availability';
+          overlapBtn.href = '/availability';
+        } else {
+          overlapBtn.href = `/search#${encodeURIComponent(user.username)}`;
+        }
+
+        // Copy profile link
+        const profileUrl = `${window.location.origin}/player/${user.username}`;
+        document.getElementById('copyProfileLink').addEventListener('click', () => {
+          navigator.clipboard.writeText(profileUrl).then(() => {
+            const el = document.getElementById('profileLinkConfirm');
+            el.classList.add('visible');
+            setTimeout(() => el.classList.remove('visible'), 1500);
+          });
+        });
+
+      } catch (err) {
+        console.error('Failed to load profile:', err);
+      }
+
+      document.getElementById('app').style.display = 'block';
+    })();
+  </script>
+</body>
+</html>

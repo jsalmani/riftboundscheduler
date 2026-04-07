@@ -22,7 +22,8 @@ const {
   getAvailabilityLocal,
   getUtcSlotsForUser,
   getUserAvailabilityCount,
-  bulkSaveAvailability
+  bulkSaveAvailability,
+  updateProfile
 } = require('./database');
 
 const app = express();
@@ -54,7 +55,7 @@ function requireAuth(req, res, next) {
 
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, displayName, password, timezone } = req.body;
+    const { username, displayName, password, timezone, discordHandle, tcgArenaCode } = req.body;
 
     if (!username || !displayName || !password) {
       return res.status(400).json({ error: 'All fields are required' });
@@ -87,7 +88,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const result = createUser.run(username.toLowerCase(), displayName, passwordHash, tz);
+    const result = createUser.run(username.toLowerCase(), displayName, passwordHash, tz, discordHandle, tcgArenaCode);
 
     req.session.userId = result.lastInsertRowid;
     res.json({
@@ -147,8 +148,40 @@ app.get('/api/auth/me', (req, res) => {
     return res.status(401).json({ error: 'User not found' });
   }
   res.json({
-    user: { id: user.id, username: user.username, displayName: user.display_name, timezone: user.timezone }
+    user: {
+      id: user.id, username: user.username, displayName: user.display_name,
+      timezone: user.timezone, discordHandle: user.discord_handle || '', tcgArenaCode: user.tcg_arena_code || ''
+    }
   });
+});
+
+// ========== PROFILE ==========
+
+app.get('/api/profile/:username', requireAuth, (req, res) => {
+  const user = getUserByUsername.get(req.params.username);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  res.json({
+    user: {
+      id: user.id, username: user.username, displayName: user.display_name,
+      timezone: user.timezone, discordHandle: user.discord_handle || '', tcgArenaCode: user.tcg_arena_code || ''
+    }
+  });
+});
+
+app.post('/api/profile/update', requireAuth, (req, res) => {
+  try {
+    const { displayName, discordHandle, tcgArenaCode } = req.body;
+    if (!displayName || displayName.length < 1 || displayName.length > 50) {
+      return res.status(400).json({ error: 'Display name must be 1-50 characters' });
+    }
+    updateProfile(req.session.userId, displayName, discordHandle, tcgArenaCode);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Profile update error:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
 });
 
 // ========== TIMEZONE LIST ==========
@@ -403,6 +436,14 @@ app.get('/availability', (req, res) => {
 
 app.get('/search', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'search.html'));
+});
+
+app.get('/profile/edit', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'profile.html'));
+});
+
+app.get('/player/:username', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'player.html'));
 });
 
 app.get('/admin', (req, res) => {

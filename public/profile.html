@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Edit Profile - Riftbound Scheduler</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="main-content" id="app" style="display:none">
+    <div class="page-header">
+      <h1>Edit Profile</h1>
+      <p>Update your display name and social info</p>
+    </div>
+
+    <div class="profile-card">
+      <div id="error" class="error-message"></div>
+      <div id="success" class="success-message"></div>
+
+      <form id="profileForm">
+        <div class="form-group">
+          <label>Username</label>
+          <input type="text" id="username" disabled>
+        </div>
+        <div class="form-group">
+          <label for="displayName">Display Name</label>
+          <input type="text" id="displayName" required maxlength="50">
+        </div>
+        <div class="form-group">
+          <label for="discordHandle">Discord Handle</label>
+          <input type="text" id="discordHandle" placeholder="@username or username#1234" maxlength="50">
+        </div>
+        <div class="form-group">
+          <label for="tcgArenaCode">TCG Arena Friend Code</label>
+          <input type="text" id="tcgArenaCode" placeholder="Friend code" maxlength="50">
+        </div>
+        <button type="submit" class="btn btn-primary">Save Changes</button>
+      </form>
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+        <label style="display:block;font-size:0.85rem;font-weight:600;color:var(--text-secondary);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px">Your Profile Link</label>
+        <div style="display:flex;gap:10px;align-items:center">
+          <input type="text" id="profileUrl" readonly style="flex:1;cursor:pointer;color:var(--accent)">
+          <button type="button" class="btn-copy btn-small" id="copyProfileLink">Copy</button>
+          <span class="copy-confirm" id="profileLinkConfirm">Copied!</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/nav.js"></script>
+  <script>
+    (async function() {
+      const auth = await RiftNav.checkAuth();
+      if (!auth) return;
+      RiftNav.createNav('profile', auth.user.timezone);
+
+      document.getElementById('username').value = auth.user.username;
+      document.getElementById('displayName').value = auth.user.displayName;
+      document.getElementById('discordHandle').value = auth.user.discordHandle || '';
+      document.getElementById('tcgArenaCode').value = auth.user.tcgArenaCode || '';
+
+      const profileUrl = `${window.location.origin}/player/${auth.user.username}`;
+      document.getElementById('profileUrl').value = profileUrl;
+
+      const errorEl = document.getElementById('error');
+      const successEl = document.getElementById('success');
+
+      document.getElementById('profileForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorEl.classList.remove('visible');
+        successEl.classList.remove('visible');
+
+        const displayName = document.getElementById('displayName').value.trim();
+        const discordHandle = document.getElementById('discordHandle').value.trim();
+        const tcgArenaCode = document.getElementById('tcgArenaCode').value.trim();
+
+        if (!displayName) {
+          errorEl.textContent = 'Display name is required';
+          errorEl.classList.add('visible');
+          return;
+        }
+
+        try {
+          const res = await fetch('/api/profile/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ displayName, discordHandle, tcgArenaCode })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            errorEl.textContent = data.error || 'Update failed';
+            errorEl.classList.add('visible');
+            return;
+          }
+          successEl.textContent = 'Profile saved!';
+          successEl.classList.add('visible');
+          setTimeout(() => successEl.classList.remove('visible'), 2000);
+        } catch {
+          errorEl.textContent = 'Network error';
+          errorEl.classList.add('visible');
+        }
+      });
+
+      document.getElementById('copyProfileLink').addEventListener('click', () => {
+        navigator.clipboard.writeText(profileUrl).then(() => {
+          const el = document.getElementById('profileLinkConfirm');
+          el.classList.add('visible');
+          setTimeout(() => el.classList.remove('visible'), 1500);
+        });
+      });
+
+      document.getElementById('profileUrl').addEventListener('click', function() {
+        this.select();
+      });
+
+      document.getElementById('app').style.display = 'block';
+    })();
+  </script>
+</body>
+</html>
