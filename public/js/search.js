@@ -7,7 +7,6 @@
 
   const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-  // 1-hour slots
   function generateTimeSlots() {
     const slots = [];
     for (let h = 6; h <= 23; h++) {
@@ -23,9 +22,12 @@
   const overlapContainer = document.getElementById('overlapContainer');
 
   let currentOverlapData = null;
-  let selectedIndices = new Set(); // multi-select
+  let selectedIndices = new Set(); // indices into overlap array
+  // For non-overlap selections (opponent-only slots picked from grid)
+  let extraSelections = []; // { theirLabel, myLabel, utcDay, utcTimeSlot }
 
   let searchTimeout;
+  let activePopup = null;
 
   searchInput.addEventListener('input', () => {
     clearTimeout(searchTimeout);
@@ -36,7 +38,17 @@
 
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.search-box')) searchResults.classList.remove('visible');
+    if (activePopup && !e.target.closest('.cell-popup') && !e.target.closest('.grid-cell')) {
+      removePopup();
+    }
   });
+
+  function removePopup() {
+    if (activePopup) {
+      activePopup.remove();
+      activePopup = null;
+    }
+  }
 
   async function doSearch(q) {
     try {
@@ -72,6 +84,9 @@
     return `${h12}:00 ${ampm}`;
   }
 
+  // Build a lookup from "day-timeSlot" to theirSlots entry (with UTC + labels)
+  let theirSlotMap = {};
+
   function buildReadOnlyGrid(container, mySet, theirSet, overlapSet) {
     container.innerHTML = '';
 
@@ -101,17 +116,113 @@
         if (overlapSet.has(key)) {
           cell.classList.add('both');
           cell.textContent = '\u2713';
+          cell.addEventListener('click', (e) => showCellPopup(e, key, 'both'));
         } else if (mySet.has(key)) {
           cell.classList.add('mine');
           cell.textContent = 'You';
         } else if (theirSet.has(key)) {
           cell.classList.add('theirs');
           cell.textContent = 'Them';
+          cell.addEventListener('click', (e) => showCellPopup(e, key, 'theirs'));
         }
 
         container.appendChild(cell);
       }
     });
+  }
+
+  function showCellPopup(e, key, type) {
+    e.stopPropagation();
+    removePopup();
+
+    // Find the slot data
+    let slotData = null;
+    if (type === 'both') {
+      // Find in overlap array by myDay-myTimeSlot
+      slotData = currentOverlapData.overlap.find(s => `${s.myDay}-${s.myTimeSlot}` === key);
+    }
+    if (type === 'theirs' || !slotData) {
+      // Find in theirSlots by their local day-timeSlot
+      slotData = theirSlotMap[key];
+    }
+    if (!slotData) return;
+
+    const popup = document.createElement('div');
+    popup.className = 'cell-popup';
+
+    const headerText = slotData.theirLabel + (slotData.myLabel ? ` / ${slotData.myLabel}` : '');
+    popup.innerHTML = `
+      <div class="cell-popup-header">${headerText}</div>
+      <div class="cell-popup-item" data-action="select">Select this time</div>
+      <div class="cell-popup-item" data-action="copy">Copy to clipboard</div>
+      <div class="cell-popup-item" data-action="calendar">Download calendar invite</div>
+    `;
+
+    document.body.appendChild(popup);
+    activePopup = popup;
+
+    // Position near the clicked cell
+    const rect = e.target.getBoundingClientRect();
+    let left = rect.right + 4;
+    let top = rect.top;
+
+    // Keep popup on screen
+    const pw = popup.offsetWidth;
+    const ph = popup.offsetHeight;
+    if (left + pw > window.innerWidth) left = rect.left - pw - 4;
+    if (top + ph > window.innerHeight) top = window.innerHeight - ph - 8;
+    if (top < 0) top = 8;
+
+    popup.style.left = left + 'px';
+    popup.style.top = top + 'px';
+
+    popup.addEventListener('click', (ev) => {
+      const action = ev.target.dataset.action;
+      if (!action) return;
+
+      if (action === 'select') {
+        addToSelection(slotData, type);
+      } else if (action === 'copy') {
+        const text = buildSingleSlotCopyText(slotData);
+        navigator.clipboard.writeText(text);
+      } else if (action === 'calendar') {
+        const slotParam = `${slotData.utcDay}-${slotData.utcTimeSlot}`;
+        window.location.href = `/api/invite/${encodeURIComponent(currentOverlapData.user.username)}?slot=${encodeURIComponent(slotParam)}`;
+      }
+      removePopup();
+    });
+  }
+
+  function addToSelection(slotData, type) {
+    if (type === 'both') {
+      // Find index in overlap array
+      const idx = currentOverlapData.overlap.findIndex(s =>
+        s.utcDay === slotData.utcDay && s.utcTimeSlot === slotData.utcTimeSlot
+      );
+      if (idx >= 0) {
+        selectedIndices.add(idx);
+      }
+    } else {
+      // It's a theirs-only slot — add to extraSelections if not already there
+      const exists = extraSelections.some(s =>
+        s.utcDay === slotData.utcDay && s.utcTimeSlot === slotData.utcTimeSlot
+      );
+      if (!exists) {
+        extraSelections.push({
+          theirLabel: slotData.theirLabel,
+          myLabel: slotData.myLabel,
+          utcDay: slotData.utcDay,
+          utcTimeSlot: slotData.utcTimeSlot,
+        });
+      }
+    }
+    updateSelectionUI();
+  }
+
+  function buildSingleSlotCopyText(slotData) {
+    if (!currentOverlapData) return '';
+    const weekDate = weekOfDate(currentOverlapData.weekYear);
+    return `\u{1F3B4} Riftbound Match \u{2014} Week of ${weekDate}\n\u{2022} ${slotData.theirLabel} / ${slotData.myLabel}\n`;
   }
 
   function buildOverlapList(container, overlapSlots) {
@@ -156,11 +267,12 @@
 
   function selectAll() {
     if (!currentOverlapData) return;
-    if (selectedIndices.size === currentOverlapData.overlap.length) {
+    if (selectedIndices.size === currentOverlapData.overlap.length && extraSelections.length === 0) {
       selectedIndices.clear();
     } else {
       currentOverlapData.overlap.forEach((_, idx) => selectedIndices.add(idx));
     }
+    extraSelections = [];
     updateSelectionUI();
   }
 
@@ -171,7 +283,7 @@
     const calNote = document.getElementById('calendarNote');
     const selectAllBtn = document.getElementById('selectAllBtn');
 
-    // Update row highlights
+    // Update overlap row highlights
     document.querySelectorAll('.overlap-row').forEach(row => {
       const idx = parseInt(row.dataset.slotIndex);
       if (selectedIndices.has(idx)) {
@@ -181,38 +293,44 @@
       }
     });
 
-    // Update select all button text
-    if (currentOverlapData && selectedIndices.size === currentOverlapData.overlap.length) {
+    if (currentOverlapData && selectedIndices.size === currentOverlapData.overlap.length && extraSelections.length === 0) {
       selectAllBtn.textContent = 'Deselect All';
     } else {
       selectAllBtn.textContent = 'Select All';
     }
 
-    if (selectedIndices.size > 0 && currentOverlapData) {
-      // Build display of selected times
+    const totalSelected = selectedIndices.size + extraSelections.length;
+
+    if (totalSelected > 0 && currentOverlapData) {
       const lines = [];
-      const sortedIndices = [...selectedIndices].sort((a, b) => {
-        const sa = currentOverlapData.overlap[a];
-        const sb = currentOverlapData.overlap[b];
-        return (sa.myDay * 100 + sa.myTimeSlot.localeCompare(sb.myTimeSlot)) -
-               (sb.myDay * 100);
+
+      // Overlap selections
+      const sortedOverlap = [...selectedIndices].sort((a, b) => {
+        const sa = currentOverlapData.overlap[a], sb = currentOverlapData.overlap[b];
+        if (sa.myDay !== sb.myDay) return sa.myDay - sb.myDay;
+        return sa.myTimeSlot.localeCompare(sb.myTimeSlot);
       });
-      sortedIndices.forEach(idx => {
+      sortedOverlap.forEach(idx => {
         const s = currentOverlapData.overlap[idx];
-        lines.push(`${s.myLabel}  /  ${s.theirLabel}`);
+        lines.push({ label: `${s.myLabel}  /  ${s.theirLabel}`, utcDay: s.utcDay, utcTimeSlot: s.utcTimeSlot, isBothFree: true });
       });
-      display.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
+
+      // Extra (theirs-only) selections
+      extraSelections.forEach(s => {
+        lines.push({ label: `${s.myLabel}  /  ${s.theirLabel} (their time only)`, utcDay: s.utcDay, utcTimeSlot: s.utcTimeSlot, isBothFree: false });
+      });
+
+      display.innerHTML = lines.map(l => `<div>${l.label}</div>`).join('');
       section.classList.add('visible');
 
-      // Calendar invite — use earliest selected slot
-      const earliest = sortedIndices[0];
-      const s = currentOverlapData.overlap[earliest];
-      const slotParam = `${s.utcDay}-${s.utcTimeSlot}`;
+      // Calendar invite — use first selected slot
+      const first = lines[0];
+      const slotParam = `${first.utcDay}-${first.utcTimeSlot}`;
       calBtn.href = `/api/invite/${encodeURIComponent(currentOverlapData.user.username)}?slot=${encodeURIComponent(slotParam)}`;
       calBtn.style.display = 'inline-flex';
 
-      if (selectedIndices.size > 1) {
-        calNote.textContent = 'Calendar invite will use the earliest selected time. Select one slot for a specific invite.';
+      if (totalSelected > 1) {
+        calNote.textContent = 'Calendar invite will use the first selected time.';
         calNote.style.display = 'block';
       } else {
         calNote.style.display = 'none';
@@ -255,6 +373,14 @@
       const s = data.overlap[idx];
       text += `\u{2022} ${s.myLabel} / ${s.theirLabel}\n`;
     });
+
+    // Include extra selections
+    if (indicesSet && extraSelections.length > 0) {
+      text += `\nTheir availability (not yet mutual):\n`;
+      extraSelections.forEach(s => {
+        text += `\u{2022} ${s.myLabel} / ${s.theirLabel}\n`;
+      });
+    }
     return text;
   }
 
@@ -263,21 +389,18 @@
     setTimeout(() => el.classList.remove('visible'), 1500);
   }
 
-  // Copy all
   document.getElementById('copyAllBtn').addEventListener('click', () => {
     navigator.clipboard.writeText(buildCopyText(null)).then(() => {
       flashCopyConfirm(document.getElementById('copyAllConfirm'));
     });
   });
 
-  // Copy selected
   document.getElementById('copySelectedBtn').addEventListener('click', () => {
     navigator.clipboard.writeText(buildCopyText(selectedIndices)).then(() => {
       flashCopyConfirm(document.getElementById('copySelectedConfirm'));
     });
   });
 
-  // Select all
   document.getElementById('selectAllBtn').addEventListener('click', selectAll);
 
   async function loadOverlap(username) {
@@ -291,6 +414,8 @@
       const data = await res.json();
       currentOverlapData = data;
       selectedIndices = new Set();
+      extraSelections = [];
+      removePopup();
 
       document.getElementById('otherName').textContent = data.user.displayName;
       document.getElementById('otherUsername').textContent = data.user.username;
@@ -303,6 +428,12 @@
       const mySet = new Set(data.mySlots.map(s => `${s.day}-${s.timeSlot}`));
       const theirSet = new Set(data.theirSlots.map(s => `${s.day}-${s.timeSlot}`));
       const overlapMySet = new Set(data.overlap.map(s => `${s.myDay}-${s.myTimeSlot}`));
+
+      // Build lookup of their slots by their local day-time key
+      theirSlotMap = {};
+      data.theirSlots.forEach(s => {
+        theirSlotMap[`${s.day}-${s.timeSlot}`] = s;
+      });
 
       const noOverlapMsg = document.getElementById('noOverlapMsg');
       const overlapListWrapper = document.getElementById('overlapListWrapper');

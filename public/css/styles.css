@@ -219,13 +219,15 @@ a:hover { color: var(--accent-hover); }
   text-align: center; color: var(--text-secondary); font-size: 1.05rem;
 }
 
-/* Overlap grid - read only, transparent empty cells */
-.overlap-grid { display: grid; grid-template-columns: 90px repeat(7, 1fr); min-width: 700px; }
-.overlap-grid .grid-cell { cursor: default; background: transparent; }
+/* Overlap grid - transparent empty cells, colored cells are clickable */
+.overlap-grid { display: grid; grid-template-columns: 90px repeat(7, 1fr); min-width: 700px; position: relative; }
+.overlap-grid .grid-cell { cursor: default; background: transparent; position: relative; }
 .overlap-grid .grid-cell:hover { background: transparent; }
 .overlap-grid .grid-cell.mine { background: var(--blue); }
-.overlap-grid .grid-cell.theirs { background: var(--amber); }
-.overlap-grid .grid-cell.both { background: var(--green); }
+.overlap-grid .grid-cell.theirs { background: var(--amber); cursor: pointer; }
+.overlap-grid .grid-cell.theirs:hover { background: var(--amber-hover); }
+.overlap-grid .grid-cell.both { background: var(--green); cursor: pointer; }
+.overlap-grid .grid-cell.both:hover { background: var(--green-bright); }
 
 /* Legend */
 .legend { display: flex; gap: 20px; margin-bottom: 16px; flex-wrap: wrap; }
@@ -329,3 +331,37 @@ a:hover { color: var(--accent-hover); }
 
 .copy-confirm { font-size: 0.85rem; color: var(--green); font-weight: 600; opacity: 0; transition: opacity 0.3s; }
 .copy-confirm.visible { opacity: 1; }
+
+/* ========== CELL POPUP ========== */
+.cell-popup {
+  position: fixed;
+  z-index: 1000;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  padding: 6px 0;
+  min-width: 180px;
+}
+
+.cell-popup-header {
+  padding: 6px 12px 4px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 2px;
+  white-space: nowrap;
+}
+
+.cell-popup-item {
+  padding: 7px 12px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.1s;
+  white-space: nowrap;
+}
+
+.cell-popup-item:hover {
+  background: rgba(255,255,255,0.07);
+}

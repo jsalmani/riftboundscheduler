@@ -230,11 +230,19 @@ app.get('/api/overlap/:username', requireAuth, (req, res) => {
     return res.status(404).json({ error: 'User not found' });
   }
 
+  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  function fmt12(timeSlot) {
+    const [h, m] = timeSlot.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+  }
+
   // Get all UTC slots for both users (spanning their respective local weeks)
   const myUtcSlots = getUtcSlotsForUser(req.session.userId, me.timezone);
   const theirUtcSlots = getUtcSlotsForUser(otherUser.id, otherUser.timezone);
 
-  // Build set of other user's UTC slots for overlap detection (keyed by week+day+time)
+  // Build set of other user's UTC slots for overlap detection
   const theirUtcSet = new Set(
     theirUtcSlots.map(s => `${s.week_year}-${s.day_of_week}-${s.time_slot}`)
   );
@@ -249,26 +257,24 @@ app.get('/api/overlap/:username', requireAuth, (req, res) => {
     return { day: local.day, timeSlot: local.timeSlot };
   });
 
-  // Convert their slots to THEIR local timezone for display
+  // Convert their slots — include both timezone labels and UTC coords for actions
   const theirLocalSlots = theirUtcSlots.map(s => {
     const local = utcToLocal(s.week_year, s.day_of_week, s.time_slot, otherUser.timezone);
-    return { day: local.day, timeSlot: local.timeSlot };
+    const myLocal = utcToLocal(s.week_year, s.day_of_week, s.time_slot, me.timezone);
+    return {
+      day: local.day,
+      timeSlot: local.timeSlot,
+      utcDay: s.day_of_week,
+      utcTimeSlot: s.time_slot,
+      theirLabel: `${DAY_NAMES[local.day]} ${fmt12(local.timeSlot)} ${local.tzAbbrev}`,
+      myLabel: `${DAY_NAMES[myLocal.day]} ${fmt12(myLocal.timeSlot)} ${myLocal.tzAbbrev}`,
+    };
   });
 
-  // Format 12h time
-  function fmt12(timeSlot) {
-    const [h, m] = timeSlot.split(':').map(Number);
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
-  }
-
-  // For overlap, provide BOTH timezone representations
-  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // Build overlap with both timezone labels
   const overlap = overlapUtc.map(s => {
     const myLocal = utcToLocal(s.week_year, s.day_of_week, s.time_slot, me.timezone);
     const theirLocal = utcToLocal(s.week_year, s.day_of_week, s.time_slot, otherUser.timezone);
-
     return {
       utcDay: s.day_of_week,
       utcTimeSlot: s.time_slot,
