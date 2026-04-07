@@ -5,14 +5,13 @@
   const myTimezone = auth.user.timezone;
   RiftNav.createNav('search', myTimezone);
 
-  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+  // 1-hour slots
   function generateTimeSlots() {
     const slots = [];
     for (let h = 6; h <= 23; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`);
-      slots.push(`${String(h).padStart(2, '0')}:30`);
     }
     return slots;
   }
@@ -23,33 +22,26 @@
   const searchResults = document.getElementById('searchResults');
   const overlapContainer = document.getElementById('overlapContainer');
 
-  // State for current overlap data
   let currentOverlapData = null;
-  let selectedSlotIndex = null;
+  let selectedIndices = new Set(); // multi-select
 
   let searchTimeout;
 
   searchInput.addEventListener('input', () => {
     clearTimeout(searchTimeout);
     const q = searchInput.value.trim();
-    if (q.length < 1) {
-      searchResults.classList.remove('visible');
-      return;
-    }
+    if (q.length < 1) { searchResults.classList.remove('visible'); return; }
     searchTimeout = setTimeout(() => doSearch(q), 250);
   });
 
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('.search-box')) {
-      searchResults.classList.remove('visible');
-    }
+    if (!e.target.closest('.search-box')) searchResults.classList.remove('visible');
   });
 
   async function doSearch(q) {
     try {
       const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
-
       if (data.users.length === 0) {
         searchResults.innerHTML = '<div class="search-result-item"><span class="display-name">No users found</span></div>';
       } else {
@@ -61,9 +53,7 @@
         ).join('');
       }
       searchResults.classList.add('visible');
-    } catch (err) {
-      console.error('Search failed:', err);
-    }
+    } catch (err) { console.error('Search failed:', err); }
   }
 
   searchResults.addEventListener('click', (e) => {
@@ -77,10 +67,9 @@
 
   function formatTime(time) {
     const h = parseInt(time.split(':')[0]);
-    const m = time.split(':')[1];
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    return `${h12}:${m} ${ampm}`;
+    return `${h12}:00 ${ampm}`;
   }
 
   function buildReadOnlyGrid(container, mySet, theirSet, overlapSet) {
@@ -99,9 +88,8 @@
     });
 
     TIME_SLOTS.forEach(time => {
-      const isHourStart = time.endsWith(':00');
       const label = document.createElement('div');
-      label.className = 'time-label' + (isHourStart ? ' hour-start' : '');
+      label.className = 'time-label hour-start';
       label.textContent = formatTime(time);
       container.appendChild(label);
 
@@ -112,10 +100,13 @@
 
         if (overlapSet.has(key)) {
           cell.classList.add('both');
+          cell.textContent = '\u2713';
         } else if (mySet.has(key)) {
           cell.classList.add('mine');
+          cell.textContent = 'You';
         } else if (theirSet.has(key)) {
           cell.classList.add('theirs');
+          cell.textContent = 'Them';
         }
 
         container.appendChild(cell);
@@ -141,24 +132,34 @@
         const row = document.createElement('div');
         row.className = 'overlap-row';
         row.dataset.slotIndex = s.idx;
-        if (selectedSlotIndex === s.idx) row.classList.add('selected');
+        if (selectedIndices.has(s.idx)) row.classList.add('selected');
         row.innerHTML = `
+          <div class="overlap-checkbox"></div>
           <span class="overlap-time-mine">${s.myLabel}</span>
           <span class="overlap-divider">/</span>
           <span class="overlap-time-theirs">${s.theirLabel}</span>
         `;
-        row.addEventListener('click', () => selectSlot(s.idx));
+        row.addEventListener('click', () => toggleSlot(s.idx));
         container.appendChild(row);
       });
     });
   }
 
-  function selectSlot(idx) {
-    // Toggle: if clicking same slot, deselect
-    if (selectedSlotIndex === idx) {
-      selectedSlotIndex = null;
+  function toggleSlot(idx) {
+    if (selectedIndices.has(idx)) {
+      selectedIndices.delete(idx);
     } else {
-      selectedSlotIndex = idx;
+      selectedIndices.add(idx);
+    }
+    updateSelectionUI();
+  }
+
+  function selectAll() {
+    if (!currentOverlapData) return;
+    if (selectedIndices.size === currentOverlapData.overlap.length) {
+      selectedIndices.clear();
+    } else {
+      currentOverlapData.overlap.forEach((_, idx) => selectedIndices.add(idx));
     }
     updateSelectionUI();
   }
@@ -167,40 +168,67 @@
     const section = document.getElementById('selectedTimeSection');
     const display = document.getElementById('selectedTimeDisplay');
     const calBtn = document.getElementById('calendarBtn');
+    const calNote = document.getElementById('calendarNote');
+    const selectAllBtn = document.getElementById('selectAllBtn');
 
     // Update row highlights
     document.querySelectorAll('.overlap-row').forEach(row => {
-      if (parseInt(row.dataset.slotIndex) === selectedSlotIndex) {
+      const idx = parseInt(row.dataset.slotIndex);
+      if (selectedIndices.has(idx)) {
         row.classList.add('selected');
       } else {
         row.classList.remove('selected');
       }
     });
 
-    if (selectedSlotIndex !== null && currentOverlapData) {
-      const s = currentOverlapData.overlap[selectedSlotIndex];
-      display.textContent = `${s.myLabel}  /  ${s.theirLabel}`;
+    // Update select all button text
+    if (currentOverlapData && selectedIndices.size === currentOverlapData.overlap.length) {
+      selectAllBtn.textContent = 'Deselect All';
+    } else {
+      selectAllBtn.textContent = 'Select All';
+    }
+
+    if (selectedIndices.size > 0 && currentOverlapData) {
+      // Build display of selected times
+      const lines = [];
+      const sortedIndices = [...selectedIndices].sort((a, b) => {
+        const sa = currentOverlapData.overlap[a];
+        const sb = currentOverlapData.overlap[b];
+        return (sa.myDay * 100 + sa.myTimeSlot.localeCompare(sb.myTimeSlot)) -
+               (sb.myDay * 100);
+      });
+      sortedIndices.forEach(idx => {
+        const s = currentOverlapData.overlap[idx];
+        lines.push(`${s.myLabel}  /  ${s.theirLabel}`);
+      });
+      display.innerHTML = lines.map(l => `<div>${l}</div>`).join('');
       section.classList.add('visible');
 
-      // Calendar invite link
+      // Calendar invite — use earliest selected slot
+      const earliest = sortedIndices[0];
+      const s = currentOverlapData.overlap[earliest];
       const slotParam = `${s.utcDay}-${s.utcTimeSlot}`;
       calBtn.href = `/api/invite/${encodeURIComponent(currentOverlapData.user.username)}?slot=${encodeURIComponent(slotParam)}`;
       calBtn.style.display = 'inline-flex';
+
+      if (selectedIndices.size > 1) {
+        calNote.textContent = 'Calendar invite will use the earliest selected time. Select one slot for a specific invite.';
+        calNote.style.display = 'block';
+      } else {
+        calNote.style.display = 'none';
+      }
     } else {
       section.classList.remove('visible');
       calBtn.style.display = 'none';
+      calNote.style.display = 'none';
     }
   }
 
-  // Generate the week-of date string from the weekYear
   function weekOfDate(weekYear) {
-    // Parse "2026-W15" to get Monday's date
-    // ISO week format: YYYY-Www
     const match = weekYear.match(/(\d{4})-W(\d{2})/);
     if (!match) return weekYear;
     const year = parseInt(match[1]);
     const week = parseInt(match[2]);
-    // Compute Monday of ISO week
     const jan4 = new Date(year, 0, 4);
     const dayOfWeek = jan4.getDay() || 7;
     const mondayOfWeek1 = new Date(jan4);
@@ -211,22 +239,22 @@
     return `${months[monday.getMonth()]} ${monday.getDate()}, ${monday.getFullYear()}`;
   }
 
-  function buildCopyText(selectedOnly) {
+  function buildCopyText(indicesSet) {
     if (!currentOverlapData) return '';
     const data = currentOverlapData;
     const weekDate = weekOfDate(data.weekYear);
-    let text = `\u{1F3B4} Riftbound Match Availability \u{2014} Week of ${weekDate}\n`;
+    let text = `\u{1F3B4} Riftbound Match Availability \u{2014} Week of ${weekDate}\n\nBoth free:\n`;
 
-    if (selectedOnly && selectedSlotIndex !== null) {
-      const s = data.overlap[selectedSlotIndex];
-      text += `\nConfirmed match time:\n`;
-      text += `\u{2705} ${s.myLabel} / ${s.theirLabel}\n`;
-    } else {
-      text += `\nBoth free:\n`;
-      data.overlap.forEach(s => {
-        text += `\u{2022} ${s.myLabel} / ${s.theirLabel}\n`;
-      });
-    }
+    const indices = indicesSet ? [...indicesSet] : data.overlap.map((_, i) => i);
+    indices.sort((a, b) => {
+      const sa = data.overlap[a], sb = data.overlap[b];
+      if (sa.myDay !== sb.myDay) return sa.myDay - sb.myDay;
+      return sa.myTimeSlot.localeCompare(sb.myTimeSlot);
+    });
+    indices.forEach(idx => {
+      const s = data.overlap[idx];
+      text += `\u{2022} ${s.myLabel} / ${s.theirLabel}\n`;
+    });
     return text;
   }
 
@@ -235,19 +263,22 @@
     setTimeout(() => el.classList.remove('visible'), 1500);
   }
 
-  // Copy all button
+  // Copy all
   document.getElementById('copyAllBtn').addEventListener('click', () => {
-    navigator.clipboard.writeText(buildCopyText(false)).then(() => {
+    navigator.clipboard.writeText(buildCopyText(null)).then(() => {
       flashCopyConfirm(document.getElementById('copyAllConfirm'));
     });
   });
 
-  // Copy selected button
+  // Copy selected
   document.getElementById('copySelectedBtn').addEventListener('click', () => {
-    navigator.clipboard.writeText(buildCopyText(true)).then(() => {
+    navigator.clipboard.writeText(buildCopyText(selectedIndices)).then(() => {
       flashCopyConfirm(document.getElementById('copySelectedConfirm'));
     });
   });
+
+  // Select all
+  document.getElementById('selectAllBtn').addEventListener('click', selectAll);
 
   async function loadOverlap(username) {
     try {
@@ -259,7 +290,7 @@
       }
       const data = await res.json();
       currentOverlapData = data;
-      selectedSlotIndex = null;
+      selectedIndices = new Set();
 
       document.getElementById('otherName').textContent = data.user.displayName;
       document.getElementById('otherUsername').textContent = data.user.username;
@@ -278,7 +309,6 @@
       const overlapActions = document.getElementById('overlapActions');
       const clickHint = document.getElementById('clickHint');
 
-      // Reset selected time section
       document.getElementById('selectedTimeSection').classList.remove('visible');
 
       if (data.overlap.length === 0) {
@@ -293,7 +323,6 @@
       }
 
       buildReadOnlyGrid(document.getElementById('comparisonGrid'), mySet, theirSet, overlapMySet);
-
       overlapContainer.classList.add('visible');
     } catch (err) {
       console.error('Overlap load failed:', err);

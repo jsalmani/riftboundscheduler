@@ -27,15 +27,16 @@
 
       <div class="tz-info" id="tzInfo"></div>
 
-      <!-- Selected time (appears when a slot is clicked) -->
+      <!-- Selected times section (multi-select) -->
       <div class="selected-time-section" id="selectedTimeSection">
-        <h3>Selected Time</h3>
+        <h3>Selected Times</h3>
         <div class="selected-time-display" id="selectedTimeDisplay"></div>
         <div class="selected-time-actions">
-          <button class="btn-copy" id="copySelectedBtn">Copy to Clipboard</button>
+          <button class="btn-copy" id="copySelectedBtn">Copy Selected</button>
           <a class="btn-calendar" id="calendarBtn" style="display:none">Download Calendar Invite</a>
           <span class="copy-confirm" id="copySelectedConfirm">Copied!</span>
         </div>
+        <div class="calendar-note" id="calendarNote" style="display:none"></div>
       </div>
 
       <div class="legend">
@@ -45,7 +46,7 @@
         <div class="legend-item"><div class="legend-swatch both"></div> Both free</div>
       </div>
 
-      <!-- Overlap (both free) section - most prominent -->
+      <!-- Overlap (both free) section -->
       <div class="overlap-section" id="overlapSection">
         <h3 class="overlap-title">Both Free</h3>
         <div id="noOverlapMsg" class="no-overlap-message" style="display:none">
@@ -53,10 +54,11 @@
         </div>
         <div id="overlapListWrapper">
           <div class="overlap-actions" id="overlapActions" style="display:none">
-            <button class="btn-copy" id="copyAllBtn">Copy All to Clipboard</button>
+            <button class="btn-select-all" id="selectAllBtn">Select All</button>
+            <button class="btn-copy" id="copyAllBtn">Copy All</button>
             <span class="copy-confirm" id="copyAllConfirm">Copied!</span>
           </div>
-          <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px" id="clickHint">Click a time slot to select it</p>
+          <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px" id="clickHint">Click time slots to select them</p>
           <div class="overlap-list" id="overlapList"></div>
         </div>
       </div>

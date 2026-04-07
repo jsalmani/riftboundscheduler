@@ -200,13 +200,14 @@ function getAvailabilityLocal(userId, timezone) {
     utcSlots = getAvailabilityMultiWeek.all(userId, utcWeeks[0], utcWeeks[1]);
   }
 
-  // Convert each to local and filter to valid grid slots (day 0-6, time 06:00-23:30)
+  // Convert each to local and filter to valid grid slots (day 0-6, hourly 06:00-23:00)
   const results = [];
   for (const s of utcSlots) {
     const local = utcToLocal(s.week_year, s.day_of_week, s.time_slot, timezone);
     if (local.day >= 0 && local.day <= 6) {
       const h = parseInt(local.timeSlot.split(':')[0]);
-      if (h >= 6 && h <= 23) {
+      const m = local.timeSlot.split(':')[1];
+      if (h >= 6 && h <= 23 && m === '00') {
         results.push({ day_of_week: local.day, time_slot: local.timeSlot });
       }
     }

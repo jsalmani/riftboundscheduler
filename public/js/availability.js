@@ -8,23 +8,22 @@
   const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
+  // 1-hour slots from 6:00 AM to 11:00 PM
   function generateTimeSlots() {
     const slots = [];
     for (let h = 6; h <= 23; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`);
-      slots.push(`${String(h).padStart(2, '0')}:30`);
     }
     return slots;
   }
 
   const TIME_SLOTS = generateTimeSlots();
-  const state = {}; // key: "day-time" -> boolean
+  const state = {};
 
   function cellKey(day, time) {
     return `${day}-${time}`;
   }
 
-  // Build grid
   const grid = document.getElementById('grid');
 
   // Header row
@@ -46,18 +45,15 @@
     grid.appendChild(header);
   });
 
-  // Build a lookup for cells by day-time
   const cellMap = {};
 
   TIME_SLOTS.forEach(time => {
-    const isHourStart = time.endsWith(':00');
     const label = document.createElement('div');
-    label.className = 'time-label' + (isHourStart ? ' hour-start' : '');
+    label.className = 'time-label hour-start';
     const h = parseInt(time.split(':')[0]);
-    const m = time.split(':')[1];
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    label.textContent = `${h12}:${m} ${ampm}`;
+    label.textContent = `${h12}:00 ${ampm}`;
     grid.appendChild(label);
 
     for (let day = 0; day < 7; day++) {
@@ -77,16 +73,18 @@
     if (cell) {
       if (isAvailable) {
         cell.classList.add('available');
+        cell.textContent = 'Free';
       } else {
         cell.classList.remove('available');
+        cell.textContent = '';
       }
     }
   }
 
   // ========== DRAG TO SELECT ==========
   let isDragging = false;
-  let dragMode = null; // true = marking available, false = marking unavailable
-  let draggedCells = new Set(); // track which cells were touched during this drag
+  let dragMode = null;
+  let draggedCells = new Set();
 
   function getCellFromEvent(e) {
     let target;
@@ -96,16 +94,13 @@
     } else {
       target = e.target;
     }
-    if (target && target.classList.contains('grid-cell')) {
-      return target;
-    }
+    if (target && target.classList.contains('grid-cell')) return target;
     return null;
   }
 
   function startDrag(e) {
     const cell = getCellFromEvent(e);
     if (!cell) return;
-    // Don't start drag on header buttons
     if (e.target.dataset.action) return;
 
     isDragging = true;
@@ -114,13 +109,10 @@
     const day = parseInt(cell.dataset.day);
     const time = cell.dataset.time;
     const key = cellKey(day, time);
-
-    // Determine drag mode from initial cell state
-    dragMode = !state[key]; // if unchecked → mark available; if checked → mark unavailable
+    dragMode = !state[key];
 
     setCellState(day, time, dragMode);
     draggedCells.add(key);
-
     e.preventDefault();
   }
 
@@ -137,7 +129,6 @@
       setCellState(day, time, dragMode);
       draggedCells.add(key);
     }
-
     e.preventDefault();
   }
 
@@ -145,7 +136,6 @@
     if (!isDragging) return;
     isDragging = false;
 
-    // Batch save all dragged cells
     if (draggedCells.size > 0) {
       const batch = [];
       draggedCells.forEach(key => {
@@ -158,17 +148,14 @@
     dragMode = null;
   }
 
-  // Mouse events
   grid.addEventListener('mousedown', startDrag);
   grid.addEventListener('mousemove', continueDrag);
   document.addEventListener('mouseup', endDrag);
-
-  // Touch events
   grid.addEventListener('touchstart', startDrag, { passive: false });
   grid.addEventListener('touchmove', continueDrag, { passive: false });
   document.addEventListener('touchend', endDrag);
 
-  // Select All / Clear All buttons
+  // Select All / Clear All
   grid.addEventListener('click', (e) => {
     if (e.target.dataset.action) {
       const day = parseInt(e.target.dataset.day);
@@ -180,28 +167,11 @@
         setCellState(day, time, isAvailable);
         batch.push({ day, timeSlot: time, isAvailable });
       });
-
       saveBatch(batch);
     }
   });
 
-  // Debounced save
-  let saveTimeout = null;
-  let pendingSlots = [];
   const saveStatus = document.getElementById('saveStatus');
-
-  function scheduleSave(day, time, isAvailable) {
-    pendingSlots.push({ day, timeSlot: time, isAvailable });
-    saveStatus.textContent = 'Saving...';
-    saveStatus.className = 'save-status saving';
-
-    clearTimeout(saveTimeout);
-    saveTimeout = setTimeout(() => {
-      const batch = [...pendingSlots];
-      pendingSlots = [];
-      saveBatch(batch);
-    }, 500);
-  }
 
   async function saveBatch(batch) {
     saveStatus.textContent = 'Saving...';
@@ -228,12 +198,10 @@
     }
   }
 
-  // Load existing availability
   async function loadAvailability() {
     try {
       const res = await fetch('/api/availability/me');
       const data = await res.json();
-
       document.getElementById('weekBadge').textContent = data.weekYear;
 
       data.slots.forEach(s => {
@@ -242,6 +210,7 @@
         const cell = cellMap[key];
         if (cell) {
           cell.classList.add('available');
+          cell.textContent = 'Free';
         }
       });
     } catch (err) {
