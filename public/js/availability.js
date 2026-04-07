@@ -2,7 +2,8 @@
 (async function() {
   const auth = await RiftNav.checkAuth();
   if (!auth) return;
-  RiftNav.createNav('availability');
+  const myTimezone = auth.user.timezone;
+  RiftNav.createNav('availability', myTimezone);
 
   const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -12,9 +13,7 @@
     const slots = [];
     for (let h = 6; h <= 23; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`);
-      if (h < 23 || true) { // include 23:30
-        slots.push(`${String(h).padStart(2, '0')}:30`);
-      }
+      slots.push(`${String(h).padStart(2, '0')}:30`);
     }
     return slots;
   }
@@ -55,7 +54,6 @@
     const isHourStart = time.endsWith(':00');
     const label = document.createElement('div');
     label.className = 'time-label' + (isHourStart ? ' hour-start' : '');
-    // Format display time
     const h = parseInt(time.split(':')[0]);
     const m = time.split(':')[1];
     const ampm = h >= 12 ? 'PM' : 'AM';
@@ -109,7 +107,6 @@
         batch.push({ day, timeSlot: time, isAvailable });
       });
 
-      // Bulk save
       saveBatch(batch);
     }
   });
@@ -157,7 +154,7 @@
     }
   }
 
-  // Load existing availability
+  // Load existing availability — server returns slots already in user's local timezone
   async function loadAvailability() {
     try {
       const res = await fetch('/api/availability/me');

@@ -641,3 +641,85 @@ a:hover {
   color: var(--text-muted);
   font-weight: 600;
 }
+
+/* ========== TIMEZONE ========== */
+.nav-tz {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.tz-info {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.tz-badge {
+  display: inline-block;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+/* Overlap list (dual timezone display) */
+.overlap-list {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.overlap-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(58, 63, 92, 0.3);
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.overlap-row:last-child {
+  border-bottom: none;
+}
+
+.overlap-time-mine {
+  color: var(--green);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.overlap-divider {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.overlap-time-theirs {
+  color: var(--teal);
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+/* Select dropdown styling */
+.form-group select {
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-family: inherit;
+  transition: border-color 0.2s;
+  appearance: auto;
+}
+
+.form-group select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}

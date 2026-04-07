@@ -14,11 +14,12 @@
     }
   }
 
-  function createNav(activePage) {
+  function createNav(activePage, timezone) {
     const nav = document.createElement('nav');
     nav.className = 'navbar';
+    const tzDisplay = timezone ? ` <span class="nav-tz">(${timezone})</span>` : '';
     nav.innerHTML = `
-      <span class="nav-brand">Riftbound Scheduler</span>
+      <span class="nav-brand">Riftbound Scheduler${tzDisplay}</span>
       <div class="nav-links">
         <a href="/availability" class="${activePage === 'availability' ? 'active' : ''}">My Availability</a>
         <a href="/search" class="${activePage === 'search' ? 'active' : ''}">Find Overlap</a>

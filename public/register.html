@@ -24,6 +24,12 @@
           <input type="text" id="displayName" name="displayName" required maxlength="50">
         </div>
         <div class="form-group">
+          <label for="timezone">Timezone</label>
+          <select id="timezone" name="timezone" required>
+            <option value="">Loading timezones...</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label for="password">Password</label>
           <input type="password" id="password" name="password" autocomplete="new-password" required minlength="8">
         </div>
@@ -39,6 +45,48 @@
   <script>
     const form = document.getElementById('registerForm');
     const errorEl = document.getElementById('error');
+    const tzSelect = document.getElementById('timezone');
+
+    // Friendly labels for IANA timezone names
+    const TZ_LABELS = {
+      'America/New_York': 'US Eastern (New York)',
+      'America/Chicago': 'US Central (Chicago)',
+      'America/Denver': 'US Mountain (Denver)',
+      'America/Los_Angeles': 'US Pacific (Los Angeles)',
+      'America/Anchorage': 'US Alaska (Anchorage)',
+      'America/Adak': 'US Hawaii-Aleutian (Adak)',
+      'America/Phoenix': 'US Arizona (Phoenix)',
+      'Pacific/Honolulu': 'US Hawaii (Honolulu)',
+      'Europe/London': 'UK (London)',
+      'Europe/Berlin': 'Europe Central (Berlin)',
+      'Asia/Tokyo': 'Japan (Tokyo)',
+      'Australia/Sydney': 'Australia Eastern (Sydney)',
+      'Australia/Melbourne': 'Australia Eastern (Melbourne)',
+    };
+
+    // Load timezone list from server
+    async function loadTimezones() {
+      try {
+        const res = await fetch('/api/timezones');
+        const data = await res.json();
+        tzSelect.innerHTML = '';
+        data.timezones.forEach(tz => {
+          const opt = document.createElement('option');
+          opt.value = tz;
+          opt.textContent = TZ_LABELS[tz] || tz;
+          tzSelect.appendChild(opt);
+        });
+        // Try to auto-detect user's timezone
+        const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (data.timezones.includes(browserTz)) {
+          tzSelect.value = browserTz;
+        }
+      } catch {
+        tzSelect.innerHTML = '<option value="America/New_York">US Eastern (New York)</option>';
+      }
+    }
+
+    loadTimezones();
 
     function showError(msg) {
       errorEl.textContent = msg;
@@ -52,8 +100,9 @@
       const username = document.getElementById('username').value.trim();
       const displayName = document.getElementById('displayName').value.trim();
       const password = document.getElementById('password').value;
+      const timezone = tzSelect.value;
 
-      if (!username || !displayName || !password) {
+      if (!username || !displayName || !password || !timezone) {
         return showError('Please fill in all fields');
       }
       if (username.length < 3) {
@@ -70,7 +119,7 @@
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, displayName, password })
+          body: JSON.stringify({ username, displayName, password, timezone })
         });
         const data = await res.json();
         if (!res.ok) {

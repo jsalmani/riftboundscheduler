@@ -19,6 +19,7 @@
           <th>ID</th>
           <th>Username</th>
           <th>Display Name</th>
+          <th>Timezone</th>
           <th>Availability This Week</th>
           <th>Slots Filled</th>
         </tr>
@@ -37,7 +38,7 @@
 
         const tbody = document.getElementById('usersBody');
         if (data.users.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No users registered yet</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">No users registered yet</td></tr>';
           return;
         }
 
@@ -46,6 +47,7 @@
             <td>${u.id}</td>
             <td>${u.username}</td>
             <td>${u.displayName}</td>
+            <td>${u.timezone}</td>
             <td>${u.availabilityFilledThisWeek
               ? '<span class="badge badge-yes">Yes</span>'
               : '<span class="badge badge-no">No</span>'}</td>

@@ -2,7 +2,8 @@
 (async function() {
   const auth = await RiftNav.checkAuth();
   if (!auth) return;
-  RiftNav.createNav('search');
+  const myTimezone = auth.user.timezone;
+  RiftNav.createNav('search', myTimezone);
 
   const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -34,7 +35,6 @@
     searchTimeout = setTimeout(() => doSearch(q), 250);
   });
 
-  // Close results when clicking outside
   document.addEventListener('click', (e) => {
     if (!e.target.closest('.search-box')) {
       searchResults.classList.remove('visible');
@@ -79,22 +79,8 @@
     return `${h12}:${m} ${ampm}`;
   }
 
-  function buildReadOnlyGrid(container, mySet, theirSet, overlapSet, showOnlyOverlap) {
+  function buildReadOnlyGrid(container, mySet, theirSet, overlapSet) {
     container.innerHTML = '';
-
-    // If showing only overlap and there are none, hide grid
-    if (showOnlyOverlap && overlapSet.size === 0) return;
-
-    // Filter time slots if showing only overlap
-    let visibleSlots = TIME_SLOTS;
-    if (showOnlyOverlap) {
-      visibleSlots = TIME_SLOTS.filter(time => {
-        for (let d = 0; d < 7; d++) {
-          if (overlapSet.has(`${d}-${time}`)) return true;
-        }
-        return false;
-      });
-    }
 
     // Header
     const timeHeader = document.createElement('div');
@@ -109,8 +95,8 @@
       container.appendChild(header);
     });
 
-    // Rows
-    visibleSlots.forEach(time => {
+    // Rows — show all time slots
+    TIME_SLOTS.forEach(time => {
       const isHourStart = time.endsWith(':00');
       const label = document.createElement('div');
       label.className = 'time-label' + (isHourStart ? ' hour-start' : '');
@@ -124,13 +110,44 @@
 
         if (overlapSet.has(key)) {
           cell.classList.add('both');
-        } else if (!showOnlyOverlap) {
-          if (mySet.has(key)) cell.classList.add('mine');
-          else if (theirSet.has(key)) cell.classList.add('theirs');
+        } else if (mySet.has(key)) {
+          cell.classList.add('mine');
+        } else if (theirSet.has(key)) {
+          cell.classList.add('theirs');
         }
 
         container.appendChild(cell);
       }
+    });
+  }
+
+  function buildOverlapList(container, overlapSlots) {
+    container.innerHTML = '';
+
+    if (overlapSlots.length === 0) return;
+
+    // Group by day (in my timezone)
+    const byDay = {};
+    overlapSlots.forEach(s => {
+      if (!byDay[s.myDay]) byDay[s.myDay] = [];
+      byDay[s.myDay].push(s);
+    });
+
+    // Sort by day then time
+    const dayOrder = Object.keys(byDay).map(Number).sort((a, b) => a - b);
+
+    dayOrder.forEach(dayIdx => {
+      const slots = byDay[dayIdx].sort((a, b) => a.myTimeSlot.localeCompare(b.myTimeSlot));
+      slots.forEach(s => {
+        const row = document.createElement('div');
+        row.className = 'overlap-row';
+        row.innerHTML = `
+          <span class="overlap-time-mine">${s.myLabel}</span>
+          <span class="overlap-divider">/</span>
+          <span class="overlap-time-theirs">${s.theirLabel}</span>
+        `;
+        container.appendChild(row);
+      });
     });
   }
 
@@ -148,23 +165,38 @@
       document.getElementById('otherUsername').textContent = data.user.username;
       document.getElementById('overlapWeek').textContent = data.weekYear;
 
+      // Show timezone info
+      document.getElementById('tzInfo').innerHTML =
+        `<span class="tz-badge">You: ${data.myTimezone}</span>` +
+        `<span class="tz-badge">Them: ${data.theirTimezone}</span>`;
+
+      // Build sets from local-timezone slots for the comparison grid
+      // My slots are in MY local timezone, their slots are in THEIR local timezone
+      // For the comparison grid, we show everything in MY timezone perspective
+      // So we need my slots in my local tz (already provided) and their slots in my local tz too
+      // But the API gives their slots in their tz. We need to use the overlap's myDay/myTimeSlot
+      // for overlap cells. For non-overlap cells we show my local and their local independently.
       const mySet = new Set(data.mySlots.map(s => `${s.day}-${s.timeSlot}`));
       const theirSet = new Set(data.theirSlots.map(s => `${s.day}-${s.timeSlot}`));
-      const overlapSet = new Set(data.overlap.map(s => `${s.day}-${s.timeSlot}`));
+
+      // For the grid: overlap cells are keyed by MY local day/time
+      const overlapMySet = new Set(data.overlap.map(s => `${s.myDay}-${s.myTimeSlot}`));
 
       const noOverlapMsg = document.getElementById('noOverlapMsg');
-      const overlapGridWrapper = document.getElementById('overlapGridWrapper');
+      const overlapListWrapper = document.getElementById('overlapListWrapper');
 
-      if (overlapSet.size === 0) {
+      if (data.overlap.length === 0) {
         noOverlapMsg.style.display = 'block';
-        overlapGridWrapper.style.display = 'none';
+        overlapListWrapper.style.display = 'none';
       } else {
         noOverlapMsg.style.display = 'none';
-        overlapGridWrapper.style.display = 'block';
-        buildReadOnlyGrid(document.getElementById('overlapGrid'), mySet, theirSet, overlapSet, true);
+        overlapListWrapper.style.display = 'block';
+        buildOverlapList(document.getElementById('overlapList'), data.overlap);
       }
 
-      buildReadOnlyGrid(document.getElementById('comparisonGrid'), mySet, theirSet, overlapSet, false);
+      // Comparison grid uses my local timezone for my slots,
+      // their local timezone for their slots (each sees their own perspective)
+      buildReadOnlyGrid(document.getElementById('comparisonGrid'), mySet, theirSet, overlapMySet);
 
       overlapContainer.classList.add('visible');
     } catch (err) {

@@ -5,13 +5,18 @@ const path = require('path');
 const {
   db,
   getCurrentWeekYear,
+  getCurrentWeekYearForTimezone,
+  localToUtc,
+  utcToLocal,
+  SUPPORTED_TIMEZONES,
   createUser,
   getUserByUsername,
   getUserById,
   searchUsers,
   getAllUsers,
   upsertAvailability,
-  getAvailability,
+  getAvailabilityLocal,
+  getUtcSlotsForUser,
   getUserAvailabilityCount,
   bulkSaveAvailability
 } = require('./database');
@@ -45,7 +50,7 @@ function requireAuth(req, res, next) {
 
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, displayName, password } = req.body;
+    const { username, displayName, password, timezone } = req.body;
 
     if (!username || !displayName || !password) {
       return res.status(400).json({ error: 'All fields are required' });
@@ -67,16 +72,24 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Display name must be 1-50 characters' });
     }
 
+    const tz = timezone || 'America/New_York';
+    if (!SUPPORTED_TIMEZONES.includes(tz)) {
+      return res.status(400).json({ error: 'Invalid timezone' });
+    }
+
     const existing = getUserByUsername.get(username);
     if (existing) {
       return res.status(409).json({ error: 'Username already taken' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const result = createUser.run(username.toLowerCase(), displayName, passwordHash);
+    const result = createUser.run(username.toLowerCase(), displayName, passwordHash, tz);
 
     req.session.userId = result.lastInsertRowid;
-    res.json({ success: true, user: { id: result.lastInsertRowid, username: username.toLowerCase(), displayName } });
+    res.json({
+      success: true,
+      user: { id: result.lastInsertRowid, username: username.toLowerCase(), displayName, timezone: tz }
+    });
   } catch (err) {
     console.error('Register error:', err);
     res.status(500).json({ error: 'Registration failed' });
@@ -102,7 +115,10 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     req.session.userId = user.id;
-    res.json({ success: true, user: { id: user.id, username: user.username, displayName: user.display_name } });
+    res.json({
+      success: true,
+      user: { id: user.id, username: user.username, displayName: user.display_name, timezone: user.timezone }
+    });
   } catch (err) {
     console.error('Login error:', err);
     res.status(500).json({ error: 'Login failed' });
@@ -126,47 +142,68 @@ app.get('/api/auth/me', (req, res) => {
   if (!user) {
     return res.status(401).json({ error: 'User not found' });
   }
-  res.json({ user: { id: user.id, username: user.username, displayName: user.display_name } });
+  res.json({
+    user: { id: user.id, username: user.username, displayName: user.display_name, timezone: user.timezone }
+  });
+});
+
+// ========== TIMEZONE LIST ==========
+
+app.get('/api/timezones', (req, res) => {
+  res.json({ timezones: SUPPORTED_TIMEZONES });
 });
 
 // ========== AVAILABILITY ROUTES ==========
 
+// Get own availability — returned in user's local timezone
 app.get('/api/availability/me', requireAuth, (req, res) => {
-  const weekYear = getCurrentWeekYear();
-  const slots = getAvailability.all(req.session.userId, weekYear);
-  res.json({ weekYear, slots });
+  const user = getUserById.get(req.session.userId);
+  const { localWeekYear, slots } = getAvailabilityLocal(req.session.userId, user.timezone);
+
+  res.json({ weekYear: localWeekYear, timezone: user.timezone, slots });
 });
 
+// Save availability — client sends local times, server converts to UTC
 app.post('/api/availability/save', requireAuth, (req, res) => {
   try {
-    const weekYear = getCurrentWeekYear();
+    const user = getUserById.get(req.session.userId);
+    const localWeekYear = getCurrentWeekYearForTimezone(user.timezone);
 
-    // Support both single slot and bulk saves
     if (Array.isArray(req.body.slots)) {
-      bulkSaveAvailability(req.session.userId, weekYear, req.body.slots);
+      const utcSlots = req.body.slots.map(slot => {
+        const utc = localToUtc(localWeekYear, slot.day, slot.timeSlot, user.timezone);
+        return { weekYear: utc.weekYear, day: utc.day, timeSlot: utc.timeSlot, isAvailable: slot.isAvailable };
+      });
+      bulkSaveAvailability(req.session.userId, utcSlots);
     } else {
       const { day, timeSlot, isAvailable } = req.body;
       if (day === undefined || !timeSlot || isAvailable === undefined) {
         return res.status(400).json({ error: 'day, timeSlot, and isAvailable are required' });
       }
-      upsertAvailability.run(req.session.userId, weekYear, day, timeSlot, isAvailable ? 1 : 0);
+      const utc = localToUtc(localWeekYear, day, timeSlot, user.timezone);
+      upsertAvailability.run(req.session.userId, utc.weekYear, utc.day, utc.timeSlot, isAvailable ? 1 : 0);
     }
 
-    res.json({ success: true, weekYear });
+    res.json({ success: true, weekYear: localWeekYear });
   } catch (err) {
     console.error('Save availability error:', err);
     res.status(500).json({ error: 'Failed to save availability' });
   }
 });
 
+// Get another user's availability — returned in THEIR local timezone
 app.get('/api/availability/:username', requireAuth, (req, res) => {
   const user = getUserByUsername.get(req.params.username);
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
   }
-  const weekYear = getCurrentWeekYear();
-  const slots = getAvailability.all(user.id, weekYear);
-  res.json({ weekYear, user: { username: user.username, displayName: user.display_name }, slots });
+  const { localWeekYear, slots } = getAvailabilityLocal(user.id, user.timezone);
+
+  res.json({
+    weekYear: localWeekYear,
+    user: { username: user.username, displayName: user.display_name, timezone: user.timezone },
+    slots
+  });
 });
 
 // ========== USER SEARCH ==========
@@ -183,30 +220,72 @@ app.get('/api/users/search', requireAuth, (req, res) => {
 // ========== OVERLAP ==========
 
 app.get('/api/overlap/:username', requireAuth, (req, res) => {
+  const me = getUserById.get(req.session.userId);
   const otherUser = getUserByUsername.get(req.params.username);
   if (!otherUser) {
     return res.status(404).json({ error: 'User not found' });
   }
 
-  const weekYear = getCurrentWeekYear();
-  const mySlots = getAvailability.all(req.session.userId, weekYear);
-  const theirSlots = getAvailability.all(otherUser.id, weekYear);
+  // Get all UTC slots for both users (spanning their respective local weeks)
+  const myUtcSlots = getUtcSlotsForUser(req.session.userId, me.timezone);
+  const theirUtcSlots = getUtcSlotsForUser(otherUser.id, otherUser.timezone);
 
-  // Build a set of the other user's available slots
-  const theirSet = new Set(
-    theirSlots.map(s => `${s.day_of_week}-${s.time_slot}`)
+  // Build set of other user's UTC slots for overlap detection (keyed by week+day+time)
+  const theirUtcSet = new Set(
+    theirUtcSlots.map(s => `${s.week_year}-${s.day_of_week}-${s.time_slot}`)
   );
 
-  // Find overlaps
-  const overlap = mySlots
-    .filter(s => theirSet.has(`${s.day_of_week}-${s.time_slot}`))
-    .map(s => ({ day: s.day_of_week, timeSlot: s.time_slot }));
+  // Find overlapping UTC slots
+  const overlapUtc = myUtcSlots
+    .filter(s => theirUtcSet.has(`${s.week_year}-${s.day_of_week}-${s.time_slot}`));
+
+  // Convert my slots to MY local timezone for display
+  const myLocalSlots = myUtcSlots.map(s => {
+    const local = utcToLocal(s.week_year, s.day_of_week, s.time_slot, me.timezone);
+    return { day: local.day, timeSlot: local.timeSlot };
+  });
+
+  // Convert their slots to THEIR local timezone for display
+  const theirLocalSlots = theirUtcSlots.map(s => {
+    const local = utcToLocal(s.week_year, s.day_of_week, s.time_slot, otherUser.timezone);
+    return { day: local.day, timeSlot: local.timeSlot };
+  });
+
+  // Format 12h time
+  function fmt12(timeSlot) {
+    const [h, m] = timeSlot.split(':').map(Number);
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+  }
+
+  // For overlap, provide BOTH timezone representations
+  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const overlap = overlapUtc.map(s => {
+    const myLocal = utcToLocal(s.week_year, s.day_of_week, s.time_slot, me.timezone);
+    const theirLocal = utcToLocal(s.week_year, s.day_of_week, s.time_slot, otherUser.timezone);
+
+    return {
+      utcDay: s.day_of_week,
+      utcTimeSlot: s.time_slot,
+      myDay: myLocal.day,
+      myTimeSlot: myLocal.timeSlot,
+      myLabel: `${DAY_NAMES[myLocal.day]} ${fmt12(myLocal.timeSlot)} ${myLocal.tzAbbrev}`,
+      theirDay: theirLocal.day,
+      theirTimeSlot: theirLocal.timeSlot,
+      theirLabel: `${DAY_NAMES[theirLocal.day]} ${fmt12(theirLocal.timeSlot)} ${theirLocal.tzAbbrev}`,
+    };
+  });
+
+  const localWeekYear = getCurrentWeekYearForTimezone(me.timezone);
 
   res.json({
-    weekYear,
-    user: { username: otherUser.username, displayName: otherUser.display_name },
-    mySlots: mySlots.map(s => ({ day: s.day_of_week, timeSlot: s.time_slot })),
-    theirSlots: theirSlots.map(s => ({ day: s.day_of_week, timeSlot: s.time_slot })),
+    weekYear: localWeekYear,
+    myTimezone: me.timezone,
+    theirTimezone: otherUser.timezone,
+    user: { username: otherUser.username, displayName: otherUser.display_name, timezone: otherUser.timezone },
+    mySlots: myLocalSlots,
+    theirSlots: theirLocalSlots,
     overlap
   });
 });
@@ -222,6 +301,7 @@ app.get('/api/admin/users', (req, res) => {
       id: u.id,
       username: u.username,
       displayName: u.display_name,
+      timezone: u.timezone,
       createdAt: u.created_at,
       availabilityFilledThisWeek: count.count > 0,
       slotCount: count.count
