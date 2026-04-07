@@ -5,7 +5,9 @@ const path = require('path');
 const ics = require('ics');
 const { DateTime } = require('luxon');
 const {
-  db,
+  initDatabase,
+  closeDatabase,
+  saveToFile,
   getCurrentWeekYear,
   getCurrentWeekYearForTimezone,
   localToUtc,
@@ -403,21 +405,34 @@ app.get('/admin', (req, res) => {
 
 // ========== START SERVER ==========
 
-const server = app.listen(PORT, () => {
-  console.log(`Riftbound Scheduler running at http://localhost:${PORT}`);
+let server;
+
+async function start() {
+  await initDatabase();
+
+  server = app.listen(PORT, () => {
+    console.log(`Riftbound Scheduler running at http://localhost:${PORT}`);
+  });
+}
+
+start().catch(err => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });
 
 // Graceful shutdown
 function shutdown() {
   console.log('\nShutting down gracefully...');
-  server.close(() => {
-    db.close();
-    console.log('Database connection closed.');
-    process.exit(0);
-  });
+  if (server) {
+    server.close(() => {
+      closeDatabase();
+      console.log('Database connection closed.');
+      process.exit(0);
+    });
+  }
   // Force close after 5 seconds
   setTimeout(() => {
-    db.close();
+    closeDatabase();
     process.exit(1);
   }, 5000);
 }

@@ -1,44 +1,120 @@
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
+const fs = require('fs');
 const path = require('path');
 const { DateTime } = require('luxon');
 
 const dbPath = path.join(__dirname, 'scheduler.db');
-const db = new Database(dbPath);
 
-// Enable WAL mode for better concurrent read performance
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
+let db = null;
 
-// Create tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL COLLATE NOCASE,
-    display_name TEXT NOT NULL,
-    password_hash TEXT NOT NULL,
-    timezone TEXT NOT NULL DEFAULT 'America/New_York',
-    created_at INTEGER DEFAULT (strftime('%s','now'))
-  );
+// Initialize the database (must be called before using any queries)
+async function initDatabase() {
+  const SQL = await initSqlJs();
 
-  CREATE TABLE IF NOT EXISTS availability (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL REFERENCES users(id),
-    week_year TEXT NOT NULL,
-    day_of_week INTEGER NOT NULL,
-    time_slot TEXT NOT NULL,
-    is_available INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(user_id, week_year, day_of_week, time_slot)
-  );
+  // Load existing DB file if it exists
+  if (fs.existsSync(dbPath)) {
+    const fileBuffer = fs.readFileSync(dbPath);
+    db = new SQL.Database(fileBuffer);
+  } else {
+    db = new SQL.Database();
+  }
 
-  CREATE INDEX IF NOT EXISTS idx_availability_user_week
-    ON availability(user_id, week_year);
-`);
+  // Enable foreign keys
+  db.run('PRAGMA foreign_keys = ON');
 
-// Add timezone column if upgrading from old schema
-try {
-  db.exec('ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT \'America/New_York\'');
-} catch {
-  // Column already exists
+  // Create tables
+  db.run(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL COLLATE NOCASE,
+      display_name TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      timezone TEXT NOT NULL DEFAULT 'America/New_York',
+      created_at INTEGER DEFAULT (strftime('%s','now'))
+    )
+  `);
+
+  db.run(`
+    CREATE TABLE IF NOT EXISTS availability (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      week_year TEXT NOT NULL,
+      day_of_week INTEGER NOT NULL,
+      time_slot TEXT NOT NULL,
+      is_available INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(user_id, week_year, day_of_week, time_slot)
+    )
+  `);
+
+  db.run(`
+    CREATE INDEX IF NOT EXISTS idx_availability_user_week
+      ON availability(user_id, week_year)
+  `);
+
+  // Add timezone column if upgrading from old schema
+  try {
+    db.run("ALTER TABLE users ADD COLUMN timezone TEXT NOT NULL DEFAULT 'America/New_York'");
+  } catch {
+    // Column already exists
+  }
+
+  saveToFile();
+  return db;
+}
+
+// Persist database to disk
+function saveToFile() {
+  if (!db) return;
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  fs.writeFileSync(dbPath, buffer);
+}
+
+// Close the database
+function closeDatabase() {
+  if (db) {
+    saveToFile();
+    db.close();
+    db = null;
+  }
+}
+
+// --- Helper wrappers to match better-sqlite3 API patterns ---
+
+// Run a query that returns rows (SELECT)
+function queryAll(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  const rows = [];
+  while (stmt.step()) {
+    rows.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return rows;
+}
+
+// Run a query that returns a single row
+function queryGet(sql, params = []) {
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+  let row = null;
+  if (stmt.step()) {
+    row = stmt.getAsObject();
+  }
+  stmt.free();
+  return row;
+}
+
+// Run a statement (INSERT/UPDATE/DELETE) and return info
+function runStmt(sql, params = []) {
+  db.run(sql, params);
+  // Get last insert rowid — sql.js doesn't return it from run(), query it
+  const lastId = queryGet('SELECT last_insert_rowid() as id');
+  const changes = queryGet('SELECT changes() as count');
+  return {
+    lastInsertRowid: lastId ? lastId.id : 0,
+    changes: changes ? changes.count : 0
+  };
 }
 
 // --- Supported IANA timezones ---
@@ -64,19 +140,14 @@ function getCurrentWeekYear() {
   return `${now.weekYear}-W${String(now.weekNumber).padStart(2, '0')}`;
 }
 
-// Get the current ISO week as seen from a user's timezone
 function getCurrentWeekYearForTimezone(timezone) {
   const now = DateTime.now().setZone(timezone);
   return `${now.weekYear}-W${String(now.weekNumber).padStart(2, '0')}`;
 }
 
-// Get the set of UTC ISO weeks that a user's local week might span
-// (e.g., AEST Monday 00:00 = previous-Sunday in UTC = different week)
 function getUtcWeeksForLocalWeek(localWeekYear, timezone) {
   const monday = getWeekMonday(localWeekYear);
-  // Local Monday 00:00 in UTC
   const localWeekStart = monday.set({ hour: 0, minute: 0 }).setZone(timezone, { keepLocalTime: true }).toUTC();
-  // Local Sunday 23:30 in UTC
   const localWeekEnd = monday.plus({ days: 6 }).set({ hour: 23, minute: 30 }).setZone(timezone, { keepLocalTime: true }).toUTC();
 
   const startWeek = `${localWeekStart.weekYear}-W${String(localWeekStart.weekNumber).padStart(2, '0')}`;
@@ -89,36 +160,25 @@ function getUtcWeeksForLocalWeek(localWeekYear, timezone) {
 
 // --- Timezone conversion helpers ---
 
-// Get the Monday of a given ISO week (e.g., "2026-W15") as a UTC date
 function getWeekMonday(weekYear) {
-  // Parse "YYYY-Www" → luxon ISO week date for Monday (day 1)
   const dt = DateTime.fromISO(`${weekYear}-1`, { zone: 'UTC' });
   return dt;
 }
 
-// Convert a local (day_of_week, time_slot) in user's timezone to UTC (day_of_week, time_slot)
-// day_of_week: 0=Monday ... 6=Sunday, time_slot: "HH:mm"
-// Returns { day: number, timeSlot: string, weekYear: string } in UTC
 function localToUtc(weekYear, day, timeSlot, timezone) {
   const monday = getWeekMonday(weekYear);
   const [hour, minute] = timeSlot.split(':').map(Number);
 
-  // Build the local datetime: Monday of that week + day offset, at the given time, in user's timezone
   const localDt = monday.plus({ days: day }).set({ hour, minute, second: 0, millisecond: 0 }).setZone(timezone, { keepLocalTime: true });
   const utcDt = localDt.toUTC();
 
-  // Compute the UTC day_of_week relative to that ISO week's Monday
-  // luxon weekday: 1=Monday ... 7=Sunday
-  const utcWeekday = utcDt.weekday; // 1-7
-  const utcDay = utcWeekday - 1; // 0-6
+  const utcDay = utcDt.weekday - 1;
   const utcTimeSlot = `${String(utcDt.hour).padStart(2, '0')}:${String(utcDt.minute).padStart(2, '0')}`;
   const utcWeekYear = `${utcDt.weekYear}-W${String(utcDt.weekNumber).padStart(2, '0')}`;
 
   return { day: utcDay, timeSlot: utcTimeSlot, weekYear: utcWeekYear };
 }
 
-// Convert a UTC (day_of_week, time_slot) to local (day_of_week, time_slot) in user's timezone
-// Returns { day: number, timeSlot: string, dayName: string }
 function utcToLocal(weekYear, day, timeSlot, timezone) {
   const monday = getWeekMonday(weekYear);
   const [hour, minute] = timeSlot.split(':').map(Number);
@@ -126,7 +186,7 @@ function utcToLocal(weekYear, day, timeSlot, timezone) {
   const utcDt = monday.plus({ days: day }).set({ hour, minute, second: 0, millisecond: 0 });
   const localDt = utcDt.setZone(timezone);
 
-  const localDay = localDt.weekday - 1; // 0=Monday ... 6=Sunday
+  const localDay = localDt.weekday - 1;
   const localTimeSlot = `${String(localDt.hour).padStart(2, '0')}:${String(localDt.minute).padStart(2, '0')}`;
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -134,59 +194,87 @@ function utcToLocal(weekYear, day, timeSlot, timezone) {
     day: localDay,
     timeSlot: localTimeSlot,
     dayName: dayNames[localDay],
-    // Include abbreviated timezone name for display
     tzAbbrev: localDt.toFormat('ZZZZ'),
     isoString: localDt.toISO()
   };
 }
 
-// --- User queries ---
-const createUser = db.prepare(
-  'INSERT INTO users (username, display_name, password_hash, timezone) VALUES (?, ?, ?, ?)'
-);
+// --- Query functions (replacing prepared statements) ---
 
-const getUserByUsername = db.prepare(
-  'SELECT * FROM users WHERE username = ?'
-);
-
-const getUserById = db.prepare(
-  'SELECT id, username, display_name, timezone, created_at FROM users WHERE id = ?'
-);
-
-const searchUsers = db.prepare(
-  'SELECT id, username, display_name FROM users WHERE username LIKE ? AND id != ? LIMIT 10'
-);
-
-const getAllUsers = db.prepare(
-  'SELECT id, username, display_name, timezone, created_at FROM users ORDER BY username'
-);
-
-// --- Availability queries ---
-const upsertAvailability = db.prepare(`
-  INSERT INTO availability (user_id, week_year, day_of_week, time_slot, is_available)
-  VALUES (?, ?, ?, ?, ?)
-  ON CONFLICT(user_id, week_year, day_of_week, time_slot)
-  DO UPDATE SET is_available = excluded.is_available
-`);
-
-const getAvailability = db.prepare(
-  'SELECT week_year, day_of_week, time_slot, is_available FROM availability WHERE user_id = ? AND week_year = ? AND is_available = 1'
-);
-
-const getAvailabilityMultiWeek = db.prepare(
-  'SELECT week_year, day_of_week, time_slot, is_available FROM availability WHERE user_id = ? AND (week_year = ? OR week_year = ?) AND is_available = 1'
-);
-
-const getUserAvailabilityCount = db.prepare(
-  'SELECT COUNT(*) as count FROM availability WHERE user_id = ? AND week_year = ? AND is_available = 1'
-);
-
-// Bulk save availability (for efficiency) — slots are already in UTC
-const bulkSaveAvailability = db.transaction((userId, slots) => {
-  for (const slot of slots) {
-    upsertAvailability.run(userId, slot.weekYear, slot.day, slot.timeSlot, slot.isAvailable ? 1 : 0);
+const createUser = {
+  run: (username, displayName, passwordHash, timezone) => {
+    const result = runStmt(
+      'INSERT INTO users (username, display_name, password_hash, timezone) VALUES (?, ?, ?, ?)',
+      [username, displayName, passwordHash, timezone]
+    );
+    saveToFile();
+    return result;
   }
-});
+};
+
+const getUserByUsername = {
+  get: (username) => queryGet('SELECT * FROM users WHERE username = ? COLLATE NOCASE', [username])
+};
+
+const getUserById = {
+  get: (id) => queryGet('SELECT id, username, display_name, timezone, created_at FROM users WHERE id = ?', [id])
+};
+
+const searchUsers = {
+  all: (pattern, excludeId) => queryAll('SELECT id, username, display_name FROM users WHERE username LIKE ? AND id != ? LIMIT 10', [pattern, excludeId])
+};
+
+const getAllUsers = {
+  all: () => queryAll('SELECT id, username, display_name, timezone, created_at FROM users ORDER BY username')
+};
+
+const upsertAvailability = {
+  run: (userId, weekYear, dayOfWeek, timeSlot, isAvailable) => {
+    const result = runStmt(
+      `INSERT INTO availability (user_id, week_year, day_of_week, time_slot, is_available)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, week_year, day_of_week, time_slot)
+       DO UPDATE SET is_available = excluded.is_available`,
+      [userId, weekYear, dayOfWeek, timeSlot, isAvailable]
+    );
+    saveToFile();
+    return result;
+  }
+};
+
+const getAvailability = {
+  all: (userId, weekYear) => queryAll(
+    'SELECT week_year, day_of_week, time_slot, is_available FROM availability WHERE user_id = ? AND week_year = ? AND is_available = 1',
+    [userId, weekYear]
+  )
+};
+
+const getAvailabilityMultiWeek = {
+  all: (userId, week1, week2) => queryAll(
+    'SELECT week_year, day_of_week, time_slot, is_available FROM availability WHERE user_id = ? AND (week_year = ? OR week_year = ?) AND is_available = 1',
+    [userId, week1, week2]
+  )
+};
+
+const getUserAvailabilityCount = {
+  get: (userId, weekYear) => queryGet(
+    'SELECT COUNT(*) as count FROM availability WHERE user_id = ? AND week_year = ? AND is_available = 1',
+    [userId, weekYear]
+  )
+};
+
+function bulkSaveAvailability(userId, slots) {
+  for (const slot of slots) {
+    db.run(
+      `INSERT INTO availability (user_id, week_year, day_of_week, time_slot, is_available)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, week_year, day_of_week, time_slot)
+       DO UPDATE SET is_available = excluded.is_available`,
+      [userId, slot.weekYear, slot.day, slot.timeSlot, slot.isAvailable ? 1 : 0]
+    );
+  }
+  saveToFile();
+}
 
 // Get availability across potentially two UTC weeks, convert to local, and filter to valid grid range
 function getAvailabilityLocal(userId, timezone) {
@@ -216,7 +304,6 @@ function getAvailabilityLocal(userId, timezone) {
   return { localWeekYear, slots: results };
 }
 
-// Get UTC availability across the UTC weeks that correspond to a user's local week
 function getUtcSlotsForUser(userId, timezone) {
   const localWeekYear = getCurrentWeekYearForTimezone(timezone);
   const utcWeeks = getUtcWeeksForLocalWeek(localWeekYear, timezone);
@@ -228,7 +315,10 @@ function getUtcSlotsForUser(userId, timezone) {
 }
 
 module.exports = {
-  db,
+  initDatabase,
+  closeDatabase,
+  saveToFile,
+  get db() { return db; },
   getCurrentWeekYear,
   getCurrentWeekYearForTimezone,
   getUtcWeeksForLocalWeek,
