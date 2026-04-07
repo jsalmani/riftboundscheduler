@@ -219,7 +219,10 @@ const getUserById = {
 };
 
 const searchUsers = {
-  all: (pattern, excludeId) => queryAll('SELECT id, username, display_name FROM users WHERE username LIKE ? AND id != ? LIMIT 10', [pattern, excludeId])
+  all: (pattern, excludeId) => queryAll(
+    'SELECT id, username, display_name FROM users WHERE (username LIKE ? COLLATE NOCASE OR display_name LIKE ? COLLATE NOCASE) AND id != ? LIMIT 10',
+    [pattern, pattern, excludeId]
+  )
 };
 
 const getAllUsers = {
