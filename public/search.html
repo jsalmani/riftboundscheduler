@@ -27,7 +27,19 @@
 
       <div class="tz-info" id="tzInfo"></div>
 
+      <!-- Selected time (appears when a slot is clicked) -->
+      <div class="selected-time-section" id="selectedTimeSection">
+        <h3>Selected Time</h3>
+        <div class="selected-time-display" id="selectedTimeDisplay"></div>
+        <div class="selected-time-actions">
+          <button class="btn-copy" id="copySelectedBtn">Copy to Clipboard</button>
+          <a class="btn-calendar" id="calendarBtn" style="display:none">Download Calendar Invite</a>
+          <span class="copy-confirm" id="copySelectedConfirm">Copied!</span>
+        </div>
+      </div>
+
       <div class="legend">
+        <div class="legend-item"><div class="legend-swatch unavailable"></div> Unavailable</div>
         <div class="legend-item"><div class="legend-swatch mine"></div> Your availability</div>
         <div class="legend-item"><div class="legend-swatch theirs"></div> Their availability</div>
         <div class="legend-item"><div class="legend-swatch both"></div> Both free</div>
@@ -40,6 +52,11 @@
           No overlapping times found this week. Try again next week or ask them to update their availability!
         </div>
         <div id="overlapListWrapper">
+          <div class="overlap-actions" id="overlapActions" style="display:none">
+            <button class="btn-copy" id="copyAllBtn">Copy All to Clipboard</button>
+            <span class="copy-confirm" id="copyAllConfirm">Copied!</span>
+          </div>
+          <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px" id="clickHint">Click a time slot to select it</p>
           <div class="overlap-list" id="overlapList"></div>
         </div>
       </div>

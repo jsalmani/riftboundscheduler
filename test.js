@@ -305,8 +305,31 @@ async function runTests() {
     }
   }
 
-  // 15. Search
-  console.log('\n9. User search');
+  // 15. Calendar invite (.ics) endpoint
+  console.log('\n9. Calendar invite (.ics)');
+  // Use the same-tz overlap between player3 and player4
+  // Their overlap has utcDay and utcTimeSlot we can use
+  if (res.body && res.body.overlap && res.body.overlap.length > 0) {
+    const slot = res.body.overlap[0];
+    const slotParam = `${slot.utcDay}-${slot.utcTimeSlot}`;
+    res = await request('GET', `/api/invite/player4?slot=${encodeURIComponent(slotParam)}`, null, cookieJar3);
+    assert('Calendar invite returns 200', res.status === 200);
+    assert('Response contains VCALENDAR', res.raw && res.raw.includes('BEGIN:VCALENDAR'));
+    assert('Response contains VEVENT', res.raw && res.raw.includes('BEGIN:VEVENT'));
+    assert('Response contains match title', res.raw && res.raw.includes('Riftbound Match vs Player Four'));
+    assert('Response contains player usernames', res.raw && res.raw.includes('player3') && res.raw.includes('player4'));
+  }
+
+  // Invalid slot format
+  res = await request('GET', '/api/invite/player4?slot=invalid', null, cookieJar3);
+  assert('Invalid slot format returns 400', res.status === 400);
+
+  // Unauthed invite
+  res = await request('GET', '/api/invite/player4?slot=0-10:30', null, '');
+  assert('Unauthed invite returns 401', res.status === 401);
+
+  // 16. Search
+  console.log('\n10. User search');
   res = await request('GET', '/api/users/search?q=player', null, cookieJar1);
   assert('Search returns 200', res.status === 200);
   assert('Search finds other players (not self)', res.body && res.body.users && res.body.users.length === 3);
@@ -314,8 +337,8 @@ async function runTests() {
   res = await request('GET', '/api/users/search?q=nonexistent', null, cookieJar1);
   assert('Search with no match returns empty', res.body && res.body.users && res.body.users.length === 0);
 
-  // 16. Admin
-  console.log('\n10. Admin');
+  // 17. Admin
+  console.log('\n11. Admin');
   res = await request('GET', '/api/admin/users', null);
   assert('Admin endpoint returns users', res.status === 200 && res.body && res.body.users && res.body.users.length === 4);
   if (res.body && res.body.users) {
@@ -325,8 +348,8 @@ async function runTests() {
     assert('Admin shows timezone for player2', p2 && p2.timezone === 'Australia/Sydney');
   }
 
-  // 17. Logout
-  console.log('\n11. Logout');
+  // 18. Logout
+  console.log('\n12. Logout');
   res = await request('POST', '/api/auth/logout', null, cookieJar1);
   assert('Logout returns 200', res.status === 200);
 

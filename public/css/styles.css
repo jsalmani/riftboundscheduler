@@ -14,7 +14,11 @@
   --teal-hover: #1de9b6;
   --teal-glow: rgba(0, 191, 165, 0.3);
   --green: #00e676;
+  --green-bright: #4cff82;
   --green-dim: rgba(0, 230, 118, 0.15);
+  --orange: #ff9100;
+  --orange-dim: rgba(255, 145, 0, 0.25);
+  --orange-hover: #ffab40;
   --red: #ff5252;
   --red-dim: rgba(255, 82, 82, 0.15);
   --yellow: #ffd740;
@@ -387,19 +391,20 @@ a:hover {
   min-height: 28px;
   cursor: pointer;
   transition: background 0.15s;
+  background: var(--orange-dim);
 }
 
 .grid-cell:hover {
-  background: rgba(255,255,255,0.05);
+  background: rgba(255, 145, 0, 0.35);
 }
 
 .grid-cell.available {
-  background: var(--teal);
-  box-shadow: inset 0 0 8px var(--teal-glow);
+  background: var(--green);
+  box-shadow: inset 0 0 8px rgba(0, 230, 118, 0.4);
 }
 
 .grid-cell.available:hover {
-  background: var(--teal-hover);
+  background: var(--green-bright);
 }
 
 /* ========== SEARCH PAGE ========== */
@@ -529,21 +534,23 @@ a:hover {
 
 .overlap-grid .grid-cell {
   cursor: default;
+  background: var(--orange-dim);
 }
 
 .overlap-grid .grid-cell.mine {
   background: var(--accent);
-  opacity: 0.7;
+  opacity: 0.8;
 }
 
 .overlap-grid .grid-cell.theirs {
   background: var(--teal);
-  opacity: 0.7;
+  opacity: 0.8;
 }
 
 .overlap-grid .grid-cell.both {
   background: var(--green);
-  box-shadow: inset 0 0 12px rgba(0, 230, 118, 0.4);
+  box-shadow: inset 0 0 12px rgba(0, 230, 118, 0.5);
+  opacity: 1;
 }
 
 /* Legend */
@@ -568,9 +575,10 @@ a:hover {
   border-radius: 3px;
 }
 
-.legend-swatch.mine { background: var(--accent); opacity: 0.7; }
-.legend-swatch.theirs { background: var(--teal); opacity: 0.7; }
+.legend-swatch.mine { background: var(--accent); opacity: 0.8; }
+.legend-swatch.theirs { background: var(--teal); opacity: 0.8; }
 .legend-swatch.both { background: var(--green); }
+.legend-swatch.unavailable { background: var(--orange-dim); border: 1px solid rgba(255,145,0,0.4); }
 
 /* ========== ADMIN PAGE ========== */
 .admin-table {
@@ -722,4 +730,116 @@ a:hover {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+/* ========== SELECTED TIME SECTION ========== */
+.selected-time-section {
+  display: none;
+  background: var(--bg-card);
+  border: 2px solid var(--green);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 24px;
+}
+
+.selected-time-section.visible {
+  display: block;
+}
+
+.selected-time-section h3 {
+  color: var(--green);
+  font-size: 1rem;
+  margin-bottom: 8px;
+}
+
+.selected-time-display {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+.selected-time-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ========== CLICKABLE OVERLAP ROWS ========== */
+.overlap-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(58, 63, 92, 0.3);
+  gap: 10px;
+  flex-wrap: wrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.overlap-row:last-child {
+  border-bottom: none;
+}
+
+.overlap-row:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.overlap-row.selected {
+  background: var(--green-dim);
+  border-left-color: var(--green);
+}
+
+/* ========== COPY & CALENDAR BUTTONS ========== */
+.overlap-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.btn-copy, .btn-calendar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: var(--radius);
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.btn-copy {
+  background: var(--accent);
+  color: white;
+}
+
+.btn-copy:hover {
+  background: var(--accent-hover);
+}
+
+.btn-calendar {
+  background: var(--teal);
+  color: white;
+}
+
+.btn-calendar:hover {
+  background: var(--teal-hover);
+}
+
+.copy-confirm {
+  font-size: 0.85rem;
+  color: var(--green);
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.copy-confirm.visible {
+  opacity: 1;
 }

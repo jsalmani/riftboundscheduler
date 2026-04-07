@@ -2,6 +2,8 @@ const express = require('express');
 const session = require('express-session');
 const bcrypt = require('bcrypt');
 const path = require('path');
+const ics = require('ics');
+const { DateTime } = require('luxon');
 const {
   db,
   getCurrentWeekYear,
@@ -288,6 +290,69 @@ app.get('/api/overlap/:username', requireAuth, (req, res) => {
     theirSlots: theirLocalSlots,
     overlap
   });
+});
+
+// ========== CALENDAR INVITE ==========
+
+app.get('/api/invite/:username', requireAuth, (req, res) => {
+  const me = getUserById.get(req.session.userId);
+  const otherUser = getUserByUsername.get(req.params.username);
+  if (!otherUser) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  const slot = req.query.slot; // format: "0-14:00" (utcDay-utcTime)
+  if (!slot || !/^\d-\d{2}:\d{2}$/.test(slot)) {
+    return res.status(400).json({ error: 'Invalid slot format. Expected: day-HH:MM' });
+  }
+
+  const [utcDayStr, utcTime] = slot.split('-');
+  const utcDay = parseInt(utcDayStr);
+  const [utcHour, utcMinute] = utcTime.split(':').map(Number);
+
+  // Compute the actual UTC datetime for this slot
+  const localWeekYear = getCurrentWeekYearForTimezone(me.timezone);
+  const { getWeekMonday } = require('./database');
+  const monday = getWeekMonday(localWeekYear);
+
+  // The slot is stored in UTC with its own week; rebuild actual UTC datetime
+  const utcDt = monday.plus({ days: utcDay }).set({ hour: utcHour, minute: utcMinute, second: 0 });
+
+  // Convert to both timezones for the description
+  const myLocal = utcDt.setZone(me.timezone);
+  const theirLocal = utcDt.setZone(otherUser.timezone);
+
+  function fmt12(dt) {
+    const h = dt.hour;
+    const m = String(dt.minute).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${m} ${ampm}`;
+  }
+
+  const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const myLabel = `${DAY_NAMES[myLocal.weekday - 1]} ${fmt12(myLocal)} ${myLocal.toFormat('ZZZZ')}`;
+  const theirLabel = `${DAY_NAMES[theirLocal.weekday - 1]} ${fmt12(theirLocal)} ${theirLocal.toFormat('ZZZZ')}`;
+
+  const { error, value } = ics.createEvent({
+    title: `Riftbound Match vs ${otherUser.display_name}`,
+    description: `Riftbound TCG tournament match\\n${me.display_name} (@${me.username}) vs ${otherUser.display_name} (@${otherUser.username})\\n\\nYour time: ${myLabel}\\nTheir time: ${theirLabel}`,
+    start: [utcDt.year, utcDt.month, utcDt.day, utcDt.hour, utcDt.minute],
+    startInputType: 'utc',
+    duration: { hours: 1 },
+    status: 'CONFIRMED',
+    busyStatus: 'BUSY',
+  });
+
+  if (error) {
+    console.error('ICS generation error:', error);
+    return res.status(500).json({ error: 'Failed to generate calendar invite' });
+  }
+
+  const filename = `riftbound-match-vs-${otherUser.username}.ics`;
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(value);
 });
 
 // ========== ADMIN ==========

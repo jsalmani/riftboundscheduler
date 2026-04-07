@@ -23,6 +23,10 @@
   const searchResults = document.getElementById('searchResults');
   const overlapContainer = document.getElementById('overlapContainer');
 
+  // State for current overlap data
+  let currentOverlapData = null;
+  let selectedSlotIndex = null;
+
   let searchTimeout;
 
   searchInput.addEventListener('input', () => {
@@ -82,7 +86,6 @@
   function buildReadOnlyGrid(container, mySet, theirSet, overlapSet) {
     container.innerHTML = '';
 
-    // Header
     const timeHeader = document.createElement('div');
     timeHeader.className = 'grid-header time-header';
     timeHeader.textContent = 'Time';
@@ -95,7 +98,6 @@
       container.appendChild(header);
     });
 
-    // Rows — show all time slots
     TIME_SLOTS.forEach(time => {
       const isHourStart = time.endsWith(':00');
       const label = document.createElement('div');
@@ -123,17 +125,14 @@
 
   function buildOverlapList(container, overlapSlots) {
     container.innerHTML = '';
-
     if (overlapSlots.length === 0) return;
 
-    // Group by day (in my timezone)
     const byDay = {};
-    overlapSlots.forEach(s => {
+    overlapSlots.forEach((s, idx) => {
       if (!byDay[s.myDay]) byDay[s.myDay] = [];
-      byDay[s.myDay].push(s);
+      byDay[s.myDay].push({ ...s, idx });
     });
 
-    // Sort by day then time
     const dayOrder = Object.keys(byDay).map(Number).sort((a, b) => a - b);
 
     dayOrder.forEach(dayIdx => {
@@ -141,15 +140,114 @@
       slots.forEach(s => {
         const row = document.createElement('div');
         row.className = 'overlap-row';
+        row.dataset.slotIndex = s.idx;
+        if (selectedSlotIndex === s.idx) row.classList.add('selected');
         row.innerHTML = `
           <span class="overlap-time-mine">${s.myLabel}</span>
           <span class="overlap-divider">/</span>
           <span class="overlap-time-theirs">${s.theirLabel}</span>
         `;
+        row.addEventListener('click', () => selectSlot(s.idx));
         container.appendChild(row);
       });
     });
   }
+
+  function selectSlot(idx) {
+    // Toggle: if clicking same slot, deselect
+    if (selectedSlotIndex === idx) {
+      selectedSlotIndex = null;
+    } else {
+      selectedSlotIndex = idx;
+    }
+    updateSelectionUI();
+  }
+
+  function updateSelectionUI() {
+    const section = document.getElementById('selectedTimeSection');
+    const display = document.getElementById('selectedTimeDisplay');
+    const calBtn = document.getElementById('calendarBtn');
+
+    // Update row highlights
+    document.querySelectorAll('.overlap-row').forEach(row => {
+      if (parseInt(row.dataset.slotIndex) === selectedSlotIndex) {
+        row.classList.add('selected');
+      } else {
+        row.classList.remove('selected');
+      }
+    });
+
+    if (selectedSlotIndex !== null && currentOverlapData) {
+      const s = currentOverlapData.overlap[selectedSlotIndex];
+      display.textContent = `${s.myLabel}  /  ${s.theirLabel}`;
+      section.classList.add('visible');
+
+      // Calendar invite link
+      const slotParam = `${s.utcDay}-${s.utcTimeSlot}`;
+      calBtn.href = `/api/invite/${encodeURIComponent(currentOverlapData.user.username)}?slot=${encodeURIComponent(slotParam)}`;
+      calBtn.style.display = 'inline-flex';
+    } else {
+      section.classList.remove('visible');
+      calBtn.style.display = 'none';
+    }
+  }
+
+  // Generate the week-of date string from the weekYear
+  function weekOfDate(weekYear) {
+    // Parse "2026-W15" to get Monday's date
+    // ISO week format: YYYY-Www
+    const match = weekYear.match(/(\d{4})-W(\d{2})/);
+    if (!match) return weekYear;
+    const year = parseInt(match[1]);
+    const week = parseInt(match[2]);
+    // Compute Monday of ISO week
+    const jan4 = new Date(year, 0, 4);
+    const dayOfWeek = jan4.getDay() || 7;
+    const mondayOfWeek1 = new Date(jan4);
+    mondayOfWeek1.setDate(jan4.getDate() - dayOfWeek + 1);
+    const monday = new Date(mondayOfWeek1);
+    monday.setDate(mondayOfWeek1.getDate() + (week - 1) * 7);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[monday.getMonth()]} ${monday.getDate()}, ${monday.getFullYear()}`;
+  }
+
+  function buildCopyText(selectedOnly) {
+    if (!currentOverlapData) return '';
+    const data = currentOverlapData;
+    const weekDate = weekOfDate(data.weekYear);
+    let text = `\u{1F3B4} Riftbound Match Availability \u{2014} Week of ${weekDate}\n`;
+
+    if (selectedOnly && selectedSlotIndex !== null) {
+      const s = data.overlap[selectedSlotIndex];
+      text += `\nConfirmed match time:\n`;
+      text += `\u{2705} ${s.myLabel} / ${s.theirLabel}\n`;
+    } else {
+      text += `\nBoth free:\n`;
+      data.overlap.forEach(s => {
+        text += `\u{2022} ${s.myLabel} / ${s.theirLabel}\n`;
+      });
+    }
+    return text;
+  }
+
+  function flashCopyConfirm(el) {
+    el.classList.add('visible');
+    setTimeout(() => el.classList.remove('visible'), 1500);
+  }
+
+  // Copy all button
+  document.getElementById('copyAllBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(buildCopyText(false)).then(() => {
+      flashCopyConfirm(document.getElementById('copyAllConfirm'));
+    });
+  });
+
+  // Copy selected button
+  document.getElementById('copySelectedBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(buildCopyText(true)).then(() => {
+      flashCopyConfirm(document.getElementById('copySelectedConfirm'));
+    });
+  });
 
   async function loadOverlap(username) {
     try {
@@ -160,30 +258,28 @@
         return;
       }
       const data = await res.json();
+      currentOverlapData = data;
+      selectedSlotIndex = null;
 
       document.getElementById('otherName').textContent = data.user.displayName;
       document.getElementById('otherUsername').textContent = data.user.username;
       document.getElementById('overlapWeek').textContent = data.weekYear;
 
-      // Show timezone info
       document.getElementById('tzInfo').innerHTML =
         `<span class="tz-badge">You: ${data.myTimezone}</span>` +
         `<span class="tz-badge">Them: ${data.theirTimezone}</span>`;
 
-      // Build sets from local-timezone slots for the comparison grid
-      // My slots are in MY local timezone, their slots are in THEIR local timezone
-      // For the comparison grid, we show everything in MY timezone perspective
-      // So we need my slots in my local tz (already provided) and their slots in my local tz too
-      // But the API gives their slots in their tz. We need to use the overlap's myDay/myTimeSlot
-      // for overlap cells. For non-overlap cells we show my local and their local independently.
       const mySet = new Set(data.mySlots.map(s => `${s.day}-${s.timeSlot}`));
       const theirSet = new Set(data.theirSlots.map(s => `${s.day}-${s.timeSlot}`));
-
-      // For the grid: overlap cells are keyed by MY local day/time
       const overlapMySet = new Set(data.overlap.map(s => `${s.myDay}-${s.myTimeSlot}`));
 
       const noOverlapMsg = document.getElementById('noOverlapMsg');
       const overlapListWrapper = document.getElementById('overlapListWrapper');
+      const overlapActions = document.getElementById('overlapActions');
+      const clickHint = document.getElementById('clickHint');
+
+      // Reset selected time section
+      document.getElementById('selectedTimeSection').classList.remove('visible');
 
       if (data.overlap.length === 0) {
         noOverlapMsg.style.display = 'block';
@@ -191,11 +287,11 @@
       } else {
         noOverlapMsg.style.display = 'none';
         overlapListWrapper.style.display = 'block';
+        overlapActions.style.display = 'flex';
+        clickHint.style.display = 'block';
         buildOverlapList(document.getElementById('overlapList'), data.overlap);
       }
 
-      // Comparison grid uses my local timezone for my slots,
-      // their local timezone for their slots (each sees their own perspective)
       buildReadOnlyGrid(document.getElementById('comparisonGrid'), mySet, theirSet, overlapMySet);
 
       overlapContainer.classList.add('visible');
