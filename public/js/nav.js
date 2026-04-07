@@ -1,7 +1,7 @@
 // Shared navigation and utility functions
 (function() {
   // Hardcoded public URL for shareable links
-  const PUBLIC_URL = 'http://riftbound.duckdns.org:3000';
+  const PUBLIC_URL = 'http://riftbound.duckdns.org';
 
   async function checkAuth() {
     try {
