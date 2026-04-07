@@ -30,8 +30,9 @@
           </select>
         </div>
         <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" id="password" name="password" autocomplete="new-password" required minlength="8">
+          <label for="pin">PIN</label>
+          <input type="password" id="pin" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="new-password" required class="pin-input" placeholder="------">
+          <div class="pin-hint">Choose a 4-6 digit numeric PIN</div>
         </div>
         <button type="submit" class="btn btn-primary">Create Account</button>
       </form>
@@ -46,8 +47,13 @@
     const form = document.getElementById('registerForm');
     const errorEl = document.getElementById('error');
     const tzSelect = document.getElementById('timezone');
+    const pinInput = document.getElementById('pin');
 
-    // Friendly labels for IANA timezone names
+    // Only allow digits in PIN field
+    pinInput.addEventListener('input', () => {
+      pinInput.value = pinInput.value.replace(/[^0-9]/g, '');
+    });
+
     const TZ_LABELS = {
       'America/New_York': 'US Eastern (New York)',
       'America/Chicago': 'US Central (Chicago)',
@@ -64,7 +70,6 @@
       'Australia/Melbourne': 'Australia Eastern (Melbourne)',
     };
 
-    // Load timezone list from server
     async function loadTimezones() {
       try {
         const res = await fetch('/api/timezones');
@@ -76,7 +81,6 @@
           opt.textContent = TZ_LABELS[tz] || tz;
           tzSelect.appendChild(opt);
         });
-        // Try to auto-detect user's timezone
         const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (data.timezones.includes(browserTz)) {
           tzSelect.value = browserTz;
@@ -99,10 +103,10 @@
 
       const username = document.getElementById('username').value.trim();
       const displayName = document.getElementById('displayName').value.trim();
-      const password = document.getElementById('password').value;
+      const pin = pinInput.value;
       const timezone = tzSelect.value;
 
-      if (!username || !displayName || !password || !timezone) {
+      if (!username || !displayName || !pin || !timezone) {
         return showError('Please fill in all fields');
       }
       if (username.length < 3) {
@@ -111,15 +115,15 @@
       if (!/^[a-zA-Z0-9_]+$/.test(username)) {
         return showError('Username can only contain letters, numbers, and underscores');
       }
-      if (password.length < 8) {
-        return showError('Password must be at least 8 characters');
+      if (!/^\d{4,6}$/.test(pin)) {
+        return showError('PIN must be 4-6 digits');
       }
 
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, displayName, password, timezone })
+          body: JSON.stringify({ username, displayName, password: pin, timezone })
         });
         const data = await res.json();
         if (!res.ok) {

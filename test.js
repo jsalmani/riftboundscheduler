@@ -68,7 +68,7 @@ async function runTests() {
   // 1. Register player1 in US Eastern timezone
   console.log('1. Register users with timezones');
   let res = await request('POST', '/api/auth/register', {
-    username: 'player1', displayName: 'Player One', password: 'password123',
+    username: 'player1', displayName: 'Player One', password: '1234',
     timezone: 'America/New_York'
   });
   assert('Register player1 (US Eastern) returns 200', res.status === 200);
@@ -78,7 +78,7 @@ async function runTests() {
 
   // 2. Register player2 in Australia/Sydney timezone
   res = await request('POST', '/api/auth/register', {
-    username: 'player2', displayName: 'Player Two', password: 'password456',
+    username: 'player2', displayName: 'Player Two', password: '4567',
     timezone: 'Australia/Sydney'
   });
   assert('Register player2 (Australia/Sydney) returns 200', res.status === 200);
@@ -87,45 +87,59 @@ async function runTests() {
 
   // 3. Registration with invalid timezone
   res = await request('POST', '/api/auth/register', {
-    username: 'player3', displayName: 'P3', password: 'password789',
+    username: 'player3', displayName: 'P3', password: '7890',
     timezone: 'Invalid/Zone'
   });
   assert('Invalid timezone returns 400', res.status === 400);
 
   // 4. Duplicate registration
   res = await request('POST', '/api/auth/register', {
-    username: 'player1', displayName: 'Dupe', password: 'password123',
+    username: 'player1', displayName: 'Dupe', password: '1234',
     timezone: 'America/New_York'
   });
   assert('Duplicate registration returns 409', res.status === 409);
 
-  // 5. Validation: short password
+  // 5. Validation: invalid PIN (not numeric)
   res = await request('POST', '/api/auth/register', {
-    username: 'player4', displayName: 'P4', password: 'short',
+    username: 'player4', displayName: 'P4', password: 'abcd',
     timezone: 'America/New_York'
   });
-  assert('Short password returns 400', res.status === 400);
+  assert('Non-numeric PIN returns 400', res.status === 400);
+
+  // PIN too short (3 digits)
+  res = await request('POST', '/api/auth/register', {
+    username: 'player4b', displayName: 'P4b', password: '123',
+    timezone: 'America/New_York'
+  });
+  assert('3-digit PIN returns 400', res.status === 400);
+
+  // PIN too long (7 digits)
+  res = await request('POST', '/api/auth/register', {
+    username: 'player4c', displayName: 'P4c', password: '1234567',
+    timezone: 'America/New_York'
+  });
+  assert('7-digit PIN returns 400', res.status === 400);
 
   // 6. Login
   console.log('\n2. Login');
   res = await request('POST', '/api/auth/login', {
-    username: 'player1', password: 'password123'
+    username: 'player1', password: '1234'
   });
   assert('Login player1 returns 200', res.status === 200);
   assert('Login returns timezone', res.body && res.body.user && res.body.user.timezone === 'America/New_York');
   if (res.cookie) cookieJar1 = res.cookie;
 
   res = await request('POST', '/api/auth/login', {
-    username: 'player2', password: 'password456'
+    username: 'player2', password: '4567'
   });
   assert('Login player2 returns 200', res.status === 200);
   if (res.cookie) cookieJar2 = res.cookie;
 
   // Bad login
   res = await request('POST', '/api/auth/login', {
-    username: 'player1', password: 'wrongpass'
+    username: 'player1', password: '9999'
   });
-  assert('Bad password returns 401', res.status === 401);
+  assert('Wrong PIN returns 401', res.status === 401);
 
   // 7. Auth check
   console.log('\n3. Auth check');
@@ -254,14 +268,14 @@ async function runTests() {
   // Register player3 and player4 in same timezone
   console.log('\n8. Same-timezone overlap verification');
   res = await request('POST', '/api/auth/register', {
-    username: 'player3', displayName: 'Player Three', password: 'password111',
+    username: 'player3', displayName: 'Player Three', password: '1111',
     timezone: 'Europe/London'
   });
   assert('Register player3 (Europe/London) returns 200', res.status === 200);
   let cookieJar3 = res.cookie;
 
   res = await request('POST', '/api/auth/register', {
-    username: 'player4', displayName: 'Player Four', password: 'password222',
+    username: 'player4', displayName: 'Player Four', password: '2222',
     timezone: 'Europe/London'
   });
   assert('Register player4 (Europe/London) returns 200', res.status === 200);

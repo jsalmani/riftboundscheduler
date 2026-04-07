@@ -20,8 +20,9 @@
           <input type="text" id="username" name="username" autocomplete="username" required>
         </div>
         <div class="form-group">
-          <label for="password">Password</label>
-          <input type="password" id="password" name="password" autocomplete="current-password" required>
+          <label for="pin">PIN</label>
+          <input type="password" id="pin" name="pin" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="current-password" required class="pin-input" placeholder="------">
+          <div class="pin-hint">4-6 digit numeric PIN</div>
         </div>
         <button type="submit" class="btn btn-primary">Sign In</button>
       </form>
@@ -35,6 +36,12 @@
   <script>
     const form = document.getElementById('loginForm');
     const errorEl = document.getElementById('error');
+    const pinInput = document.getElementById('pin');
+
+    // Only allow digits in PIN field
+    pinInput.addEventListener('input', () => {
+      pinInput.value = pinInput.value.replace(/[^0-9]/g, '');
+    });
 
     function showError(msg) {
       errorEl.textContent = msg;
@@ -46,17 +53,21 @@
       errorEl.classList.remove('visible');
 
       const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
+      const pin = pinInput.value;
 
-      if (!username || !password) {
+      if (!username || !pin) {
         return showError('Please fill in all fields');
+      }
+
+      if (!/^\d{4,6}$/.test(pin)) {
+        return showError('PIN must be 4-6 digits');
       }
 
       try {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
+          body: JSON.stringify({ username, password: pin })
         });
         const data = await res.json();
         if (!res.ok) {

@@ -66,8 +66,8 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Username can only contain letters, numbers, and underscores' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (!/^\d{4,6}$/.test(password)) {
+      return res.status(400).json({ error: 'PIN must be 4-6 digits' });
     }
 
     if (displayName.length < 1 || displayName.length > 50) {

@@ -8,7 +8,6 @@
   const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-  // Generate time slots from 06:00 to 23:30 in 30-min increments
   function generateTimeSlots() {
     const slots = [];
     for (let h = 6; h <= 23; h++) {
@@ -19,8 +18,6 @@
   }
 
   const TIME_SLOTS = generateTimeSlots();
-
-  // State: track which cells are available
   const state = {}; // key: "day-time" -> boolean
 
   function cellKey(day, time) {
@@ -49,7 +46,9 @@
     grid.appendChild(header);
   });
 
-  // Time rows
+  // Build a lookup for cells by day-time
+  const cellMap = {};
+
   TIME_SLOTS.forEach(time => {
     const isHourStart = time.endsWith(':00');
     const label = document.createElement('div');
@@ -66,24 +65,108 @@
       cell.className = 'grid-cell';
       cell.dataset.day = day;
       cell.dataset.time = time;
-      cell.addEventListener('click', () => toggleCell(cell, day, time));
       grid.appendChild(cell);
+      cellMap[cellKey(day, time)] = cell;
     }
   });
 
-  function toggleCell(cell, day, time) {
+  function setCellState(day, time, isAvailable) {
     const key = cellKey(day, time);
-    const isNowAvailable = !state[key];
-    state[key] = isNowAvailable;
+    state[key] = isAvailable;
+    const cell = cellMap[key];
+    if (cell) {
+      if (isAvailable) {
+        cell.classList.add('available');
+      } else {
+        cell.classList.remove('available');
+      }
+    }
+  }
 
-    if (isNowAvailable) {
-      cell.classList.add('available');
+  // ========== DRAG TO SELECT ==========
+  let isDragging = false;
+  let dragMode = null; // true = marking available, false = marking unavailable
+  let draggedCells = new Set(); // track which cells were touched during this drag
+
+  function getCellFromEvent(e) {
+    let target;
+    if (e.touches) {
+      const touch = e.touches[0];
+      target = document.elementFromPoint(touch.clientX, touch.clientY);
     } else {
-      cell.classList.remove('available');
+      target = e.target;
+    }
+    if (target && target.classList.contains('grid-cell')) {
+      return target;
+    }
+    return null;
+  }
+
+  function startDrag(e) {
+    const cell = getCellFromEvent(e);
+    if (!cell) return;
+    // Don't start drag on header buttons
+    if (e.target.dataset.action) return;
+
+    isDragging = true;
+    draggedCells = new Set();
+
+    const day = parseInt(cell.dataset.day);
+    const time = cell.dataset.time;
+    const key = cellKey(day, time);
+
+    // Determine drag mode from initial cell state
+    dragMode = !state[key]; // if unchecked → mark available; if checked → mark unavailable
+
+    setCellState(day, time, dragMode);
+    draggedCells.add(key);
+
+    e.preventDefault();
+  }
+
+  function continueDrag(e) {
+    if (!isDragging) return;
+    const cell = getCellFromEvent(e);
+    if (!cell) return;
+
+    const day = parseInt(cell.dataset.day);
+    const time = cell.dataset.time;
+    const key = cellKey(day, time);
+
+    if (!draggedCells.has(key)) {
+      setCellState(day, time, dragMode);
+      draggedCells.add(key);
     }
 
-    scheduleSave(day, time, isNowAvailable);
+    e.preventDefault();
   }
+
+  function endDrag() {
+    if (!isDragging) return;
+    isDragging = false;
+
+    // Batch save all dragged cells
+    if (draggedCells.size > 0) {
+      const batch = [];
+      draggedCells.forEach(key => {
+        const [day, time] = key.split('-');
+        batch.push({ day: parseInt(day), timeSlot: time, isAvailable: dragMode });
+      });
+      saveBatch(batch);
+    }
+    draggedCells = new Set();
+    dragMode = null;
+  }
+
+  // Mouse events
+  grid.addEventListener('mousedown', startDrag);
+  grid.addEventListener('mousemove', continueDrag);
+  document.addEventListener('mouseup', endDrag);
+
+  // Touch events
+  grid.addEventListener('touchstart', startDrag, { passive: false });
+  grid.addEventListener('touchmove', continueDrag, { passive: false });
+  document.addEventListener('touchend', endDrag);
 
   // Select All / Clear All buttons
   grid.addEventListener('click', (e) => {
@@ -94,16 +177,7 @@
       const batch = [];
 
       TIME_SLOTS.forEach(time => {
-        const key = cellKey(day, time);
-        state[key] = isAvailable;
-        const cell = grid.querySelector(`.grid-cell[data-day="${day}"][data-time="${time}"]`);
-        if (cell) {
-          if (isAvailable) {
-            cell.classList.add('available');
-          } else {
-            cell.classList.remove('available');
-          }
-        }
+        setCellState(day, time, isAvailable);
         batch.push({ day, timeSlot: time, isAvailable });
       });
 
@@ -154,7 +228,7 @@
     }
   }
 
-  // Load existing availability — server returns slots already in user's local timezone
+  // Load existing availability
   async function loadAvailability() {
     try {
       const res = await fetch('/api/availability/me');
@@ -165,7 +239,7 @@
       data.slots.forEach(s => {
         const key = cellKey(s.day_of_week, s.time_slot);
         state[key] = true;
-        const cell = grid.querySelector(`.grid-cell[data-day="${s.day_of_week}"][data-time="${s.time_slot}"]`);
+        const cell = cellMap[key];
         if (cell) {
           cell.classList.add('available');
         }

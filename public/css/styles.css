@@ -10,15 +10,15 @@
   --accent: #7c4dff;
   --accent-hover: #9c7cff;
   --accent-glow: rgba(124, 77, 255, 0.3);
+  --blue: #4A90D9;
+  --blue-hover: #5DA0E9;
+  --amber: #E8A838;
+  --amber-hover: #F0B848;
+  --green: #2ECC71;
+  --green-bright: #3DDF81;
+  --green-dim: rgba(46, 204, 113, 0.15);
   --teal: #00bfa5;
   --teal-hover: #1de9b6;
-  --teal-glow: rgba(0, 191, 165, 0.3);
-  --green: #00e676;
-  --green-bright: #4cff82;
-  --green-dim: rgba(0, 230, 118, 0.15);
-  --orange: #ff9100;
-  --orange-dim: rgba(255, 145, 0, 0.25);
-  --orange-hover: #ffab40;
   --red: #ff5252;
   --red-dim: rgba(255, 82, 82, 0.15);
   --yellow: #ffd740;
@@ -200,6 +200,27 @@ a:hover {
   box-shadow: 0 0 0 3px var(--accent-glow);
 }
 
+/* PIN input styling */
+.pin-input {
+  text-align: center;
+  font-size: 2rem !important;
+  letter-spacing: 0.6em;
+  padding: 16px 14px !important;
+  font-family: monospace !important;
+}
+
+.pin-input::placeholder {
+  font-size: 1rem;
+  letter-spacing: 0.1em;
+}
+
+.pin-hint {
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -323,6 +344,8 @@ a:hover {
   display: grid;
   grid-template-columns: 90px repeat(7, 1fr);
   min-width: 700px;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .grid-header {
@@ -382,25 +405,25 @@ a:hover {
   border-top: 1px solid var(--border);
 }
 
+/* Availability grid cells — transparent when unavailable */
 .grid-cell {
-  border-bottom: 1px solid rgba(58, 63, 92, 0.3);
-  border-left: 1px solid rgba(58, 63, 92, 0.3);
+  border-bottom: 1px solid rgba(58, 63, 92, 0.2);
+  border-left: 1px solid rgba(58, 63, 92, 0.2);
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 28px;
   cursor: pointer;
   transition: background 0.15s;
-  background: var(--orange-dim);
+  background: transparent;
 }
 
 .grid-cell:hover {
-  background: rgba(255, 145, 0, 0.35);
+  background: rgba(255,255,255,0.06);
 }
 
 .grid-cell.available {
   background: var(--green);
-  box-shadow: inset 0 0 8px rgba(0, 230, 118, 0.4);
 }
 
 .grid-cell.available:hover {
@@ -525,7 +548,7 @@ a:hover {
   font-size: 1.05rem;
 }
 
-/* Overlap grid - read only */
+/* Overlap grid - read only, transparent empty cells */
 .overlap-grid {
   display: grid;
   grid-template-columns: 90px repeat(7, 1fr);
@@ -534,23 +557,23 @@ a:hover {
 
 .overlap-grid .grid-cell {
   cursor: default;
-  background: var(--orange-dim);
+  background: transparent;
+}
+
+.overlap-grid .grid-cell:hover {
+  background: transparent;
 }
 
 .overlap-grid .grid-cell.mine {
-  background: var(--accent);
-  opacity: 0.8;
+  background: var(--blue);
 }
 
 .overlap-grid .grid-cell.theirs {
-  background: var(--teal);
-  opacity: 0.8;
+  background: var(--amber);
 }
 
 .overlap-grid .grid-cell.both {
   background: var(--green);
-  box-shadow: inset 0 0 12px rgba(0, 230, 118, 0.5);
-  opacity: 1;
 }
 
 /* Legend */
@@ -575,10 +598,10 @@ a:hover {
   border-radius: 3px;
 }
 
-.legend-swatch.mine { background: var(--accent); opacity: 0.8; }
-.legend-swatch.theirs { background: var(--teal); opacity: 0.8; }
+.legend-swatch.mine { background: var(--blue); }
+.legend-swatch.theirs { background: var(--amber); }
 .legend-swatch.both { background: var(--green); }
-.legend-swatch.unavailable { background: var(--orange-dim); border: 1px solid rgba(255,145,0,0.4); }
+.legend-swatch.unavailable { background: transparent; border: 1px solid var(--border); }
 
 /* ========== ADMIN PAGE ========== */
 .admin-table {
@@ -689,10 +712,22 @@ a:hover {
   border-bottom: 1px solid rgba(58, 63, 92, 0.3);
   gap: 10px;
   flex-wrap: wrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  border-left: 3px solid transparent;
 }
 
 .overlap-row:last-child {
   border-bottom: none;
+}
+
+.overlap-row:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+.overlap-row.selected {
+  background: var(--green-dim);
+  border-left-color: var(--green);
 }
 
 .overlap-time-mine {
@@ -763,32 +798,6 @@ a:hover {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-}
-
-/* ========== CLICKABLE OVERLAP ROWS ========== */
-.overlap-row {
-  display: flex;
-  align-items: center;
-  padding: 10px 16px;
-  border-bottom: 1px solid rgba(58, 63, 92, 0.3);
-  gap: 10px;
-  flex-wrap: wrap;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  border-left: 3px solid transparent;
-}
-
-.overlap-row:last-child {
-  border-bottom: none;
-}
-
-.overlap-row:hover {
-  background: rgba(255,255,255,0.04);
-}
-
-.overlap-row.selected {
-  background: var(--green-dim);
-  border-left-color: var(--green);
 }
 
 /* ========== COPY & CALENDAR BUTTONS ========== */
