@@ -1,5 +1,8 @@
-// Shared navigation component
+// Shared navigation and utility functions
 (function() {
+  // Hardcoded public URL for shareable links
+  const PUBLIC_URL = 'http://riftbound.duckdns.org:3000';
+
   async function checkAuth() {
     try {
       const res = await fetch('/api/auth/me');
@@ -35,5 +38,33 @@
     });
   }
 
-  window.RiftNav = { checkAuth, createNav };
+  // Clipboard copy with HTTP fallback
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    }
+    return fallbackCopy(text);
+  }
+
+  function fallbackCopy(text) {
+    return new Promise((resolve) => {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      resolve();
+    });
+  }
+
+  function profileUrl(username) {
+    return `${PUBLIC_URL}/player/${username}`;
+  }
+
+  window.RiftNav = { checkAuth, createNav, copyText, profileUrl, PUBLIC_URL };
 })();

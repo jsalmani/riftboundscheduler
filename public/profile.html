@@ -60,7 +60,7 @@
       document.getElementById('discordHandle').value = auth.user.discordHandle || '';
       document.getElementById('tcgArenaCode').value = auth.user.tcgArenaCode || '';
 
-      const profileUrl = `${window.location.origin}/player/${auth.user.username}`;
+      const profileUrl = RiftNav.profileUrl(auth.user.username);
       document.getElementById('profileUrl').value = profileUrl;
 
       const errorEl = document.getElementById('error');
@@ -103,7 +103,7 @@
       });
 
       document.getElementById('copyProfileLink').addEventListener('click', () => {
-        navigator.clipboard.writeText(profileUrl).then(() => {
+        RiftNav.copyText(profileUrl).then(() => {
           const el = document.getElementById('profileLinkConfirm');
           el.classList.add('visible');
           setTimeout(() => el.classList.remove('visible'), 1500);
