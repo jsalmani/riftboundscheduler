@@ -1,0 +1,38 @@
+// Shared navigation component
+(function() {
+  async function checkAuth() {
+    try {
+      const res = await fetch('/api/auth/me');
+      if (!res.ok) {
+        window.location.href = '/login';
+        return null;
+      }
+      return await res.json();
+    } catch {
+      window.location.href = '/login';
+      return null;
+    }
+  }
+
+  function createNav(activePage) {
+    const nav = document.createElement('nav');
+    nav.className = 'navbar';
+    nav.innerHTML = `
+      <span class="nav-brand">Riftbound Scheduler</span>
+      <div class="nav-links">
+        <a href="/availability" class="${activePage === 'availability' ? 'active' : ''}">My Availability</a>
+        <a href="/search" class="${activePage === 'search' ? 'active' : ''}">Find Overlap</a>
+        <button class="btn-logout" id="logoutBtn">Logout</button>
+      </div>
+    `;
+    document.body.prepend(nav);
+
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      window.location.href = '/login';
+    });
+  }
+
+  // Expose globally
+  window.RiftNav = { checkAuth, createNav };
+})();

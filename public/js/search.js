@@ -1,0 +1,176 @@
+// Search and overlap logic
+(async function() {
+  const auth = await RiftNav.checkAuth();
+  if (!auth) return;
+  RiftNav.createNav('search');
+
+  const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const DAY_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  function generateTimeSlots() {
+    const slots = [];
+    for (let h = 6; h <= 23; h++) {
+      slots.push(`${String(h).padStart(2, '0')}:00`);
+      slots.push(`${String(h).padStart(2, '0')}:30`);
+    }
+    return slots;
+  }
+
+  const TIME_SLOTS = generateTimeSlots();
+
+  const searchInput = document.getElementById('searchInput');
+  const searchResults = document.getElementById('searchResults');
+  const overlapContainer = document.getElementById('overlapContainer');
+
+  let searchTimeout;
+
+  searchInput.addEventListener('input', () => {
+    clearTimeout(searchTimeout);
+    const q = searchInput.value.trim();
+    if (q.length < 1) {
+      searchResults.classList.remove('visible');
+      return;
+    }
+    searchTimeout = setTimeout(() => doSearch(q), 250);
+  });
+
+  // Close results when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-box')) {
+      searchResults.classList.remove('visible');
+    }
+  });
+
+  async function doSearch(q) {
+    try {
+      const res = await fetch(`/api/users/search?q=${encodeURIComponent(q)}`);
+      const data = await res.json();
+
+      if (data.users.length === 0) {
+        searchResults.innerHTML = '<div class="search-result-item"><span class="display-name">No users found</span></div>';
+      } else {
+        searchResults.innerHTML = data.users.map(u =>
+          `<div class="search-result-item" data-username="${u.username}">
+            <span class="username">${u.username}</span>
+            <span class="display-name"> - ${u.display_name}</span>
+          </div>`
+        ).join('');
+      }
+      searchResults.classList.add('visible');
+    } catch (err) {
+      console.error('Search failed:', err);
+    }
+  }
+
+  searchResults.addEventListener('click', (e) => {
+    const item = e.target.closest('.search-result-item');
+    if (item && item.dataset.username) {
+      searchInput.value = item.dataset.username;
+      searchResults.classList.remove('visible');
+      loadOverlap(item.dataset.username);
+    }
+  });
+
+  function formatTime(time) {
+    const h = parseInt(time.split(':')[0]);
+    const m = time.split(':')[1];
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${m} ${ampm}`;
+  }
+
+  function buildReadOnlyGrid(container, mySet, theirSet, overlapSet, showOnlyOverlap) {
+    container.innerHTML = '';
+
+    // If showing only overlap and there are none, hide grid
+    if (showOnlyOverlap && overlapSet.size === 0) return;
+
+    // Filter time slots if showing only overlap
+    let visibleSlots = TIME_SLOTS;
+    if (showOnlyOverlap) {
+      visibleSlots = TIME_SLOTS.filter(time => {
+        for (let d = 0; d < 7; d++) {
+          if (overlapSet.has(`${d}-${time}`)) return true;
+        }
+        return false;
+      });
+    }
+
+    // Header
+    const timeHeader = document.createElement('div');
+    timeHeader.className = 'grid-header time-header';
+    timeHeader.textContent = 'Time';
+    container.appendChild(timeHeader);
+
+    DAY_SHORT.forEach(day => {
+      const header = document.createElement('div');
+      header.className = 'grid-header';
+      header.textContent = day;
+      container.appendChild(header);
+    });
+
+    // Rows
+    visibleSlots.forEach(time => {
+      const isHourStart = time.endsWith(':00');
+      const label = document.createElement('div');
+      label.className = 'time-label' + (isHourStart ? ' hour-start' : '');
+      label.textContent = formatTime(time);
+      container.appendChild(label);
+
+      for (let day = 0; day < 7; day++) {
+        const key = `${day}-${time}`;
+        const cell = document.createElement('div');
+        cell.className = 'grid-cell';
+
+        if (overlapSet.has(key)) {
+          cell.classList.add('both');
+        } else if (!showOnlyOverlap) {
+          if (mySet.has(key)) cell.classList.add('mine');
+          else if (theirSet.has(key)) cell.classList.add('theirs');
+        }
+
+        container.appendChild(cell);
+      }
+    });
+  }
+
+  async function loadOverlap(username) {
+    try {
+      const res = await fetch(`/api/overlap/${encodeURIComponent(username)}`);
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || 'Failed to load overlap');
+        return;
+      }
+      const data = await res.json();
+
+      document.getElementById('otherName').textContent = data.user.displayName;
+      document.getElementById('otherUsername').textContent = data.user.username;
+      document.getElementById('overlapWeek').textContent = data.weekYear;
+
+      const mySet = new Set(data.mySlots.map(s => `${s.day}-${s.timeSlot}`));
+      const theirSet = new Set(data.theirSlots.map(s => `${s.day}-${s.timeSlot}`));
+      const overlapSet = new Set(data.overlap.map(s => `${s.day}-${s.timeSlot}`));
+
+      const noOverlapMsg = document.getElementById('noOverlapMsg');
+      const overlapGridWrapper = document.getElementById('overlapGridWrapper');
+
+      if (overlapSet.size === 0) {
+        noOverlapMsg.style.display = 'block';
+        overlapGridWrapper.style.display = 'none';
+      } else {
+        noOverlapMsg.style.display = 'none';
+        overlapGridWrapper.style.display = 'block';
+        buildReadOnlyGrid(document.getElementById('overlapGrid'), mySet, theirSet, overlapSet, true);
+      }
+
+      buildReadOnlyGrid(document.getElementById('comparisonGrid'), mySet, theirSet, overlapSet, false);
+
+      overlapContainer.classList.add('visible');
+    } catch (err) {
+      console.error('Overlap load failed:', err);
+    }
+  }
+
+  document.getElementById('app').style.display = 'block';
+})();

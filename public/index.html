@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Riftbound Scheduler</title>
+</head>
+<body>
+  <script>
+    fetch('/api/auth/me')
+      .then(r => {
+        if (r.ok) {
+          window.location.href = '/availability';
+        } else {
+          window.location.href = '/login';
+        }
+      })
+      .catch(() => {
+        window.location.href = '/login';
+      });
+  </script>
+</body>
+</html>

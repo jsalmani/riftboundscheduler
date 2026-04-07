@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Riftbound Scheduler</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="main-content">
+    <div class="page-header">
+      <h1>Admin Dashboard</h1>
+      <p>All registered users and their availability status <span id="weekBadge" class="week-badge"></span></p>
+    </div>
+
+    <table class="admin-table" id="usersTable">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Username</th>
+          <th>Display Name</th>
+          <th>Availability This Week</th>
+          <th>Slots Filled</th>
+        </tr>
+      </thead>
+      <tbody id="usersBody"></tbody>
+    </table>
+  </div>
+
+  <script>
+    (async function() {
+      try {
+        const res = await fetch('/api/admin/users');
+        const data = await res.json();
+
+        document.getElementById('weekBadge').textContent = data.weekYear;
+
+        const tbody = document.getElementById('usersBody');
+        if (data.users.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">No users registered yet</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = data.users.map(u => `
+          <tr>
+            <td>${u.id}</td>
+            <td>${u.username}</td>
+            <td>${u.displayName}</td>
+            <td>${u.availabilityFilledThisWeek
+              ? '<span class="badge badge-yes">Yes</span>'
+              : '<span class="badge badge-no">No</span>'}</td>
+            <td>${u.slotCount}</td>
+          </tr>
+        `).join('');
+      } catch (err) {
+        console.error('Failed to load admin data:', err);
+      }
+    })();
+  </script>
+</body>
+</html>

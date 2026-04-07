@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Find Overlap - Riftbound Scheduler</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="main-content" id="app" style="display:none">
+    <div class="page-header">
+      <h1>Find Overlap</h1>
+      <p>Search for a player to see when you're both free</p>
+    </div>
+
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Type a username..." autocomplete="off">
+      <div class="search-results" id="searchResults"></div>
+    </div>
+
+    <div class="overlap-container" id="overlapContainer">
+      <div class="overlap-header">
+        <h2>Comparing with <span id="otherName"></span></h2>
+        <span class="vs">@<span id="otherUsername"></span></span>
+        <span id="overlapWeek" class="week-badge"></span>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item"><div class="legend-swatch mine"></div> Your availability</div>
+        <div class="legend-item"><div class="legend-swatch theirs"></div> Their availability</div>
+        <div class="legend-item"><div class="legend-swatch both"></div> Both free</div>
+      </div>
+
+      <!-- Overlap (both free) section - most prominent -->
+      <div class="overlap-section" id="overlapSection">
+        <h3 class="overlap-title">Both Free</h3>
+        <div id="noOverlapMsg" class="no-overlap-message" style="display:none">
+          No overlapping times found this week. Try again next week or ask them to update their availability!
+        </div>
+        <div class="grid-wrapper" id="overlapGridWrapper">
+          <div class="overlap-grid" id="overlapGrid"></div>
+        </div>
+      </div>
+
+      <!-- Combined view -->
+      <div class="overlap-section">
+        <h3>Full Comparison</h3>
+        <div class="grid-wrapper">
+          <div class="overlap-grid" id="comparisonGrid"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/nav.js"></script>
+  <script src="/js/search.js"></script>
+</body>
+</html>

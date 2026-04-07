@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register - Riftbound Scheduler</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="auth-container">
+    <div class="auth-card">
+      <h1>Create Account</h1>
+      <p class="subtitle">Join Riftbound Scheduler to coordinate tournament matches</p>
+
+      <div id="error" class="error-message"></div>
+
+      <form id="registerForm">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" autocomplete="username" required minlength="3" maxlength="30" pattern="[a-zA-Z0-9_]+">
+        </div>
+        <div class="form-group">
+          <label for="displayName">Display Name</label>
+          <input type="text" id="displayName" name="displayName" required maxlength="50">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" autocomplete="new-password" required minlength="8">
+        </div>
+        <button type="submit" class="btn btn-primary">Create Account</button>
+      </form>
+
+      <div class="auth-footer">
+        Already have an account? <a href="/login">Sign in</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('registerForm');
+    const errorEl = document.getElementById('error');
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.classList.add('visible');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorEl.classList.remove('visible');
+
+      const username = document.getElementById('username').value.trim();
+      const displayName = document.getElementById('displayName').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!username || !displayName || !password) {
+        return showError('Please fill in all fields');
+      }
+      if (username.length < 3) {
+        return showError('Username must be at least 3 characters');
+      }
+      if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+        return showError('Username can only contain letters, numbers, and underscores');
+      }
+      if (password.length < 8) {
+        return showError('Password must be at least 8 characters');
+      }
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, displayName, password })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          return showError(data.error || 'Registration failed');
+        }
+        window.location.href = '/availability';
+      } catch (err) {
+        showError('Network error. Please try again.');
+      }
+    });
+  </script>
+</body>
+</html>
